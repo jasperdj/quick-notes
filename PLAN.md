@@ -2102,6 +2102,699 @@ class ImportManager {
 
 **Note:** The password field doesn't explicitly say "encrypt" - it's discrete. If password is provided, export is automatically encrypted.
 
+### 7.4 Per-Header Encryption
+
+**Mixed Encryption Within Documents**
+
+Headers can be individually marked as encrypted or unencrypted, allowing sensitive content to be protected while leaving non-sensitive content readable. When exporting, the same password applies to all encrypted headers. When importing with an incorrect password, only unencrypted content is imported without warning.
+
+**Syntax:**
+
+```markdown
+# Public Project Notes
+
+This content is visible to everyone.
+
+## Budget Information 🔒
+
+This header and all nested content is encrypted.
+- Line items
+- Financial data
+- Sensitive calculations
+
+## Team Notes
+
+Back to unencrypted content.
+
+### Confidential Strategy 🔒
+
+Another encrypted section.
+```
+
+**Encryption Indicator:**
+- Headers marked with 🔒 emoji or `#encrypted` tag are encrypted
+- Visual indicator shows lock icon in editor
+- Encrypted content appears as `[ENCRYPTED CONTENT]` placeholder in plain text
+- Only decrypted when correct password is provided
+
+**Implementation:**
+
+```javascript
+class PerHeaderEncryption {
+  constructor(crypto) {
+    this.crypto = crypto
+    this.encryptedHeaders = new Map() // headerPath -> encrypted data
+  }
+
+  markHeaderAsEncrypted(headerPath) {
+    const header = this.findHeader(headerPath)
+    if (!header.title.includes('🔒')) {
+      header.title += ' 🔒'
+      this.updateHeaderInDocument(header)
+    }
+  }
+
+  async encryptHeader(headerPath, password) {
+    // Get header and all nested content
+    const content = this.getHeaderContent(headerPath)
+
+    // Encrypt content
+    const encrypted = await this.crypto.encrypt(content, password)
+
+    // Store encrypted version
+    this.encryptedHeaders.set(headerPath, {
+      encrypted: encrypted,
+      originalLineNumbers: content.lineNumbers,
+      placeholder: `[ENCRYPTED: ${headerPath}]`
+    })
+
+    // Replace content in document with placeholder
+    this.replaceHeaderContent(headerPath, `[ENCRYPTED CONTENT - Requires password to decrypt]`)
+
+    // Mark as encrypted
+    this.markHeaderAsEncrypted(headerPath)
+  }
+
+  async decryptHeader(headerPath, password) {
+    const encryptedData = this.encryptedHeaders.get(headerPath)
+    if (!encryptedData) {
+      throw new Error('Header not encrypted')
+    }
+
+    try {
+      // Decrypt content
+      const decrypted = await this.crypto.decrypt(encryptedData.encrypted, password)
+
+      // Replace placeholder with decrypted content
+      this.replaceHeaderContent(headerPath, decrypted)
+
+      // Remove from encrypted map
+      this.encryptedHeaders.delete(headerPath)
+
+      // Remove lock indicator
+      this.unmarkHeaderAsEncrypted(headerPath)
+
+      return true
+    } catch (e) {
+      return false // Wrong password
+    }
+  }
+
+  async exportWithMixedEncryption(options = {}) {
+    const { password = null } = options
+
+    const bundle = {
+      version: '1.0',
+      exported: Date.now(),
+      headers: []
+    }
+
+    // Parse document structure
+    const headers = this.parseHeaderStructure()
+
+    for (const header of headers) {
+      const isEncrypted = header.title.includes('🔒') || header.tags.includes('encrypted')
+      const content = this.getHeaderContent(header.path)
+
+      if (isEncrypted && password) {
+        // Encrypt this header
+        const encrypted = await this.crypto.encrypt(content, password)
+        bundle.headers.push({
+          path: header.path,
+          title: header.title,
+          encrypted: true,
+          data: encrypted
+        })
+      } else if (isEncrypted && !password) {
+        // User wants to export encrypted headers but didn't provide password
+        // Skip or warn
+        console.warn(`Skipping encrypted header: ${header.path}`)
+      } else {
+        // Unencrypted header
+        bundle.headers.push({
+          path: header.path,
+          title: header.title,
+          encrypted: false,
+          data: content
+        })
+      }
+    }
+
+    return bundle
+  }
+
+  async importWithMixedEncryption(bundle, password = null) {
+    const imported = {
+      successful: [],
+      failed: [],
+      skipped: []
+    }
+
+    for (const header of bundle.headers) {
+      if (header.encrypted) {
+        if (password) {
+          try {
+            // Try to decrypt
+            const decrypted = await this.crypto.decrypt(header.data, password)
+            this.insertHeader(header.path, header.title, decrypted)
+            imported.successful.push(header.path)
+          } catch (e) {
+            // Wrong password - silently skip encrypted content
+            imported.skipped.push(header.path)
+            // DO NOT warn user about wrong password
+          }
+        } else {
+          // No password provided for encrypted content - skip
+          imported.skipped.push(header.path)
+        }
+      } else {
+        // Unencrypted content - always import
+        this.insertHeader(header.path, header.title, header.data)
+        imported.successful.push(header.path)
+      }
+    }
+
+    // Only return successful imports - no indication of failures
+    return imported.successful
+  }
+
+  getHeaderContent(headerPath) {
+    const header = this.findHeader(headerPath)
+    const startLine = header.lineNumber
+    const endLine = this.findHeaderEnd(startLine, header.level)
+
+    const lines = []
+    for (let i = startLine; i <= endLine; i++) {
+      lines.push(this.editor.getLine(i))
+    }
+
+    return {
+      text: lines.join('\n'),
+      lineNumbers: { start: startLine, end: endLine }
+    }
+  }
+
+  replaceHeaderContent(headerPath, newContent) {
+    const header = this.findHeader(headerPath)
+    const startLine = header.lineNumber + 1 // Don't replace header line itself
+    const endLine = this.findHeaderEnd(header.lineNumber, header.level)
+
+    // Delete old content
+    for (let i = endLine; i >= startLine; i--) {
+      this.editor.deleteLine(i)
+    }
+
+    // Insert new content
+    const newLines = newContent.split('\n')
+    for (let i = 0; i < newLines.length; i++) {
+      this.editor.insertLine(startLine + i, newLines[i])
+    }
+  }
+}
+```
+
+**UI Behavior:**
+
+**Marking Header as Encrypted:**
+```
+Right-click header > "Encrypt this section"
+  ↓
+Enter password dialog
+  ↓
+Content replaced with [ENCRYPTED CONTENT] placeholder
+Header gets 🔒 indicator
+```
+
+**Decrypting Header:**
+```
+Click 🔒 icon or right-click > "Decrypt section"
+  ↓
+Enter password dialog
+  ↓
+If correct: Content revealed
+If incorrect: Silent failure, content stays encrypted
+```
+
+**Export Behavior:**
+```
+User exports document with password
+
+For each header:
+- If marked 🔒: Encrypt with provided password
+- If not marked: Export as plain text
+
+Result: Mixed encrypted/plain bundle
+```
+
+**Import Behavior:**
+```
+User imports mixed bundle
+User enters password (or skips)
+
+For each header in bundle:
+- If encrypted + password provided:
+  → Try to decrypt
+  → If successful: Import content
+  → If failed: SILENTLY skip (no warning)
+- If encrypted + no password:
+  → SILENTLY skip
+- If unencrypted:
+  → Always import
+
+NO USER NOTIFICATION about failed decryptions
+User only sees successfully imported content
+```
+
+**Key Benefits:**
+
+1. **Selective Security**: Encrypt only sensitive sections, not entire document
+2. **Silent Failure**: Failed decryption doesn't reveal that encrypted content exists
+3. **Single Password**: One password encrypts all marked headers
+4. **Visual Clarity**: 🔒 emoji clearly shows what's encrypted in editor
+5. **Flexible Sharing**: Export with some headers encrypted, others plain
+6. **No Data Loss**: Encrypted content preserved even if password forgotten (stays encrypted)
+
+**Use Cases:**
+
+- Personal notes with some confidential sections (passwords, API keys, personal thoughts)
+- Team documents where some sections need restricted access
+- Project notes with sensitive financial data
+- Mixed public/private documentation
+- Sharing notes with selective redaction
+
+**Security Considerations:**
+
+- Each header encrypted separately (not linked)
+- Same password for all encrypted headers in export
+- Encryption metadata not exposed in failed imports
+- No brute-force indicators (silent failures)
+- Encrypted placeholders don't reveal content length
+
+### 7.5 Auto-Sync to GitHub
+
+**Automatic Background Export to Git Repository**
+
+Continuously sync document changes to a GitHub repository every 1 minute, creating an automatic backup and version history. This runs in the background without user intervention.
+
+**Features:**
+- Auto-export every 1 minute when changes detected
+- Push to configured GitHub repository
+- Commit messages with timestamps and change summaries
+- Configurable sync interval (default: 1 minute)
+- Sync indicator in status bar
+- Conflict resolution for concurrent edits
+- Option to enable/disable per document
+
+**Setup Requirements:**
+- GitHub Personal Access Token (classic) with `repo` scope
+- Repository name (e.g., `username/quick-notes-backup`)
+- Optional: Branch name (default: `main`)
+- Optional: File path in repo (default: `notes.txt`)
+
+**Implementation:**
+
+```javascript
+class GitHubAutoSync {
+  constructor(storage) {
+    this.storage = storage
+    this.config = null
+    this.syncInterval = 60000 // 1 minute
+    this.lastSync = null
+    this.syncTimer = null
+    this.pendingChanges = false
+  }
+
+  async initialize() {
+    // Load config from settings
+    this.config = await this.storage.getSetting('github_sync')
+
+    if (this.config && this.config.enabled) {
+      this.startAutoSync()
+    }
+  }
+
+  async configure(settings) {
+    // Save GitHub sync settings
+    this.config = {
+      enabled: settings.enabled,
+      token: settings.token,
+      repo: settings.repo, // e.g., "username/quick-notes-backup"
+      branch: settings.branch || 'main',
+      filePath: settings.filePath || 'notes.txt',
+      syncInterval: settings.syncInterval || 60000
+    }
+
+    await this.storage.setSetting('github_sync', this.config)
+
+    if (this.config.enabled) {
+      this.startAutoSync()
+    } else {
+      this.stopAutoSync()
+    }
+  }
+
+  startAutoSync() {
+    if (this.syncTimer) {
+      clearInterval(this.syncTimer)
+    }
+
+    // Sync immediately
+    this.performSync()
+
+    // Set up interval
+    this.syncTimer = setInterval(() => {
+      if (this.pendingChanges) {
+        this.performSync()
+      }
+    }, this.config.syncInterval)
+
+    this.showSyncIndicator('active')
+  }
+
+  stopAutoSync() {
+    if (this.syncTimer) {
+      clearInterval(this.syncTimer)
+      this.syncTimer = null
+    }
+    this.showSyncIndicator('inactive')
+  }
+
+  onDocumentChange() {
+    // Called by editor when document changes
+    this.pendingChanges = true
+  }
+
+  async performSync() {
+    if (!this.config || !this.config.enabled) return
+
+    this.showSyncIndicator('syncing')
+
+    try {
+      // 1. Get current document content
+      const content = this.getCurrentDocumentContent()
+
+      // 2. Get current file SHA from GitHub (for updates)
+      const currentSHA = await this.getFileSHA()
+
+      // 3. Create commit message
+      const commitMessage = this.generateCommitMessage()
+
+      // 4. Push to GitHub
+      await this.pushToGitHub({
+        content: content,
+        message: commitMessage,
+        sha: currentSHA
+      })
+
+      this.lastSync = Date.now()
+      this.pendingChanges = false
+      this.showSyncIndicator('success')
+
+      // Store last sync time
+      await this.storage.setSetting('last_github_sync', this.lastSync)
+
+    } catch (error) {
+      console.error('GitHub sync failed:', error)
+      this.showSyncIndicator('error')
+
+      // Retry in 30 seconds
+      setTimeout(() => this.performSync(), 30000)
+    }
+  }
+
+  async getFileSHA() {
+    // Get current file SHA from GitHub (needed for updates)
+    const url = `https://api.github.com/repos/${this.config.repo}/contents/${this.config.filePath}?ref=${this.config.branch}`
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `token ${this.config.token}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        return data.sha
+      } else {
+        // File doesn't exist yet
+        return null
+      }
+    } catch (e) {
+      return null
+    }
+  }
+
+  async pushToGitHub({ content, message, sha }) {
+    const url = `https://api.github.com/repos/${this.config.repo}/contents/${this.config.filePath}`
+
+    const body = {
+      message: message,
+      content: btoa(unescape(encodeURIComponent(content))), // Base64 encode
+      branch: this.config.branch
+    }
+
+    if (sha) {
+      body.sha = sha // Required for updates
+    }
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${this.config.token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(`GitHub API error: ${error.message}`)
+    }
+
+    return await response.json()
+  }
+
+  generateCommitMessage() {
+    const timestamp = new Date().toISOString()
+    const stats = this.getDocumentStats()
+
+    return `Auto-sync: ${timestamp}\n\nDocument stats:\n- Lines: ${stats.lines}\n- Headers: ${stats.headers}\n- Words: ${stats.words}`
+  }
+
+  getDocumentStats() {
+    const content = this.getCurrentDocumentContent()
+    const lines = content.split('\n').length
+    const headers = (content.match(/^#{1,6}\s+/gm) || []).length
+    const words = content.split(/\s+/).length
+
+    return { lines, headers, words }
+  }
+
+  getCurrentDocumentContent() {
+    return this.storage.getCurrentDocument().content
+  }
+
+  showSyncIndicator(status) {
+    const indicator = document.getElementById('github-sync-indicator')
+    if (!indicator) return
+
+    switch (status) {
+      case 'active':
+        indicator.innerHTML = '☁️ GitHub Sync: Active'
+        indicator.className = 'sync-active'
+        break
+      case 'syncing':
+        indicator.innerHTML = '⏳ Syncing to GitHub...'
+        indicator.className = 'sync-syncing'
+        break
+      case 'success':
+        indicator.innerHTML = `✅ Synced at ${new Date(this.lastSync).toLocaleTimeString()}`
+        indicator.className = 'sync-success'
+        // Fade back to active after 3 seconds
+        setTimeout(() => this.showSyncIndicator('active'), 3000)
+        break
+      case 'error':
+        indicator.innerHTML = '❌ GitHub Sync Error'
+        indicator.className = 'sync-error'
+        break
+      case 'inactive':
+        indicator.innerHTML = '☁️ GitHub Sync: Off'
+        indicator.className = 'sync-inactive'
+        break
+    }
+  }
+
+  async pullFromGitHub() {
+    // Manual pull to get latest from GitHub (for conflict resolution)
+    const url = `https://api.github.com/repos/${this.config.repo}/contents/${this.config.filePath}?ref=${this.config.branch}`
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `token ${this.config.token}`,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const content = decodeURIComponent(escape(atob(data.content)))
+      return {
+        content: content,
+        sha: data.sha,
+        lastModified: data.commit?.committer?.date
+      }
+    } else {
+      throw new Error('Failed to fetch from GitHub')
+    }
+  }
+
+  async checkConflict() {
+    // Check if GitHub version is newer than local
+    try {
+      const remote = await this.pullFromGitHub()
+      const remoteTime = new Date(remote.lastModified).getTime()
+
+      if (this.lastSync && remoteTime > this.lastSync) {
+        // Conflict: GitHub has newer content
+        return {
+          hasConflict: true,
+          remoteContent: remote.content,
+          remoteTime: remoteTime
+        }
+      }
+
+      return { hasConflict: false }
+    } catch (e) {
+      return { hasConflict: false }
+    }
+  }
+
+  async resolveConflict(strategy = 'local') {
+    const conflict = await this.checkConflict()
+
+    if (!conflict.hasConflict) return
+
+    if (strategy === 'local') {
+      // Keep local changes, overwrite GitHub
+      await this.performSync()
+    } else if (strategy === 'remote') {
+      // Keep GitHub changes, overwrite local
+      this.storage.getCurrentDocument().content = conflict.remoteContent
+      this.lastSync = conflict.remoteTime
+      this.pendingChanges = false
+    } else if (strategy === 'merge') {
+      // Three-way merge (advanced)
+      const merged = await this.performThreeWayMerge(conflict.remoteContent)
+      this.storage.getCurrentDocument().content = merged
+      await this.performSync()
+    }
+  }
+}
+```
+
+**Settings UI:**
+
+```
+┌────────────────────────────────────────────┐
+│ GitHub Auto-Sync Settings                  │
+├────────────────────────────────────────────┤
+│                                            │
+│ [✓] Enable automatic sync to GitHub       │
+│                                            │
+│ Personal Access Token:                     │
+│ [ghp_••••••••••••••••••••••••••••]        │
+│ → Generate token at github.com/settings/  │
+│   tokens with 'repo' scope                 │
+│                                            │
+│ Repository:                                │
+│ [username/quick-notes-backup........]     │
+│                                            │
+│ Branch:                                    │
+│ [main...........................]         │
+│                                            │
+│ File Path:                                 │
+│ [notes.txt......................]         │
+│                                            │
+│ Sync Interval:                             │
+│ ( ) 30 seconds                             │
+│ (•) 1 minute (recommended)                 │
+│ ( ) 5 minutes                              │
+│ ( ) 15 minutes                             │
+│                                            │
+│ Last synced: 2 minutes ago                 │
+│ Status: ✅ All changes synced              │
+│                                            │
+│ [Test Connection] [Save] [Cancel]          │
+└────────────────────────────────────────────┘
+```
+
+**Status Bar Indicator:**
+
+```
+┌───────────────────────────────────────────────────────┐
+│ Line 42 | 2,341 words | ☁️ Synced 1m ago | Auto-saved │
+└───────────────────────────────────────────────────────┘
+```
+
+**Conflict Resolution Dialog:**
+
+```
+┌──────────────────────────────────────────────┐
+│ ⚠️  GitHub Sync Conflict Detected            │
+├──────────────────────────────────────────────┤
+│                                              │
+│ The document on GitHub has been modified     │
+│ more recently than your local version.       │
+│                                              │
+│ GitHub version: Updated 5 minutes ago        │
+│ Your version: Updated 2 minutes ago          │
+│                                              │
+│ How would you like to resolve this?          │
+│                                              │
+│ ( ) Keep my local changes (overwrite GitHub) │
+│ (•) Use GitHub version (discard local)       │
+│ ( ) Merge both versions                      │
+│                                              │
+│ [Resolve Conflict]                           │
+└──────────────────────────────────────────────┘
+```
+
+**Features:**
+
+1. **Automatic Background Sync**: Runs every 1 minute without user interaction
+2. **Smart Change Detection**: Only syncs when document has changed
+3. **Visual Feedback**: Status bar shows sync status and last sync time
+4. **Error Handling**: Retries failed syncs, shows error indicators
+5. **Conflict Detection**: Detects when GitHub version is newer
+6. **Conflict Resolution**: User can choose local, remote, or merge
+7. **Commit History**: Each sync creates a proper commit with metadata
+8. **Configurable Interval**: User can adjust sync frequency
+9. **Per-Document Control**: Can be enabled/disabled per document
+10. **Test Connection**: Validate GitHub credentials before enabling
+
+**Security:**
+- Personal Access Token stored in IndexedDB (encrypted)
+- Token never exposed in commits or exports
+- Fine-grained permissions (repo scope only)
+- Option to revoke token from GitHub at any time
+
+**Use Cases:**
+- Automatic backup to GitHub
+- Version history via Git commits
+- Cross-device sync (pull on other devices)
+- Collaboration (multiple users can pull from same repo)
+- Disaster recovery
+- Audit trail of changes
+
+**Limitations:**
+- Requires internet connection
+- GitHub API rate limits apply (60 requests/hour unauthenticated, 5000 authenticated)
+- At 1-minute intervals, uses ~1,440 API calls/day (well within limits)
+- Binary content (images, attachments) not synced (only text content)
+
 ---
 
 ## 8. Custom Themes
@@ -3041,7 +3734,673 @@ Show what changed:
 
 ---
 
-## 11. Performance Optimizations
+## 11. Kanban Board View
+
+**Alternative Visualization Mode**
+
+Transform document content into a kanban board view based on checkbox tasks, providing a visual project management interface while maintaining the plain text document as the source of truth.
+
+### 11.1 Concept
+
+The kanban view interprets checkbox items as tasks and organizes them into columns based on their completion state and optional tags/labels. The document remains in plain markdown format - the kanban view is purely a visualization layer.
+
+**Key Features:**
+- Toggle between text editor and kanban board view
+- Drag-and-drop tasks between columns
+- Visual task cards with metadata
+- Automatic sync with underlying markdown
+- No separate data structure - parses existing checkbox lists
+
+### 11.2 Kanban Syntax
+
+**Basic Task:**
+```markdown
+- [ ] Task description
+- [x] Completed task
+```
+
+**Task with Tags (for columns):**
+```markdown
+- [ ] Implement user authentication #todo
+- [ ] Design landing page #in-progress
+- [x] Set up repository #done
+```
+
+**Task with Metadata:**
+```markdown
+- [ ] Build API endpoints #in-progress @john due:2026-01-15
+  - [ ] Create user routes
+  - [ ] Add authentication middleware
+  - [x] Set up database connection
+```
+
+### 11.3 Column Detection
+
+**Auto-detected Columns:**
+1. **No Tag / #todo**: Todo column
+2. **#in-progress / #doing / #wip**: In Progress column
+3. **#done / [x]**: Done column
+
+**Custom Columns via Tags:**
+```markdown
+# Project Tasks
+
+## Backend #column
+- [ ] Task 1
+- [ ] Task 2
+
+## Frontend #column
+- [ ] Task 3
+```
+
+### 11.4 Implementation
+
+```javascript
+class KanbanView {
+  constructor(editor, parser) {
+    this.editor = editor
+    this.parser = parser
+    this.isActive = false
+    this.columns = new Map()
+    this.tasks = []
+  }
+
+  toggle() {
+    if (this.isActive) {
+      this.exitKanbanView()
+    } else {
+      this.enterKanbanView()
+    }
+  }
+
+  enterKanbanView() {
+    // Parse document for tasks
+    this.tasks = this.parseTasksFromDocument()
+
+    // Group tasks into columns
+    this.organizeColumns()
+
+    // Hide text editor, show kanban board
+    document.getElementById('editor').style.display = 'none'
+    document.getElementById('kanban-board').style.display = 'flex'
+
+    // Render kanban board
+    this.render()
+
+    this.isActive = true
+  }
+
+  exitKanbanView() {
+    // Hide kanban board, show text editor
+    document.getElementById('kanban-board').style.display = 'none'
+    document.getElementById('editor').style.display = 'block'
+
+    this.isActive = false
+  }
+
+  parseTasksFromDocument() {
+    const tasks = []
+    const lines = this.editor.getLines()
+    let currentHeader = null
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+
+      // Track current header for context
+      const headerMatch = line.match(/^(#{1,6})\s+(.+)/)
+      if (headerMatch) {
+        currentHeader = {
+          level: headerMatch[1].length,
+          title: headerMatch[2],
+          path: this.parser.getHeaderPath(i)
+        }
+        continue
+      }
+
+      // Parse checkbox items
+      const checkboxMatch = line.match(/^(\s*)- \[([ x])\]\s+(.+)/)
+      if (checkboxMatch) {
+        const [, indent, checked, content] = checkboxMatch
+
+        // Extract tags, assignees, due dates
+        const tags = this.extractTags(content)
+        const assignees = this.extractAssignees(content)
+        const dueDate = this.extractDueDate(content)
+        const cleanContent = this.removeMetadata(content)
+
+        tasks.push({
+          lineNumber: i,
+          indent: indent.length,
+          checked: checked === 'x',
+          content: cleanContent,
+          fullContent: content,
+          tags: tags,
+          assignees: assignees,
+          dueDate: dueDate,
+          header: currentHeader,
+          subtasks: []
+        })
+      }
+    }
+
+    // Build task hierarchy (parent-child relationships)
+    return this.buildTaskHierarchy(tasks)
+  }
+
+  extractTags(content) {
+    const tags = []
+    const tagPattern = /#([\w-]+)/g
+    let match
+    while ((match = tagPattern.exec(content)) !== null) {
+      tags.push(match[1])
+    }
+    return tags
+  }
+
+  extractAssignees(content) {
+    const assignees = []
+    const assigneePattern = /@([\w-]+)/g
+    let match
+    while ((match = assigneePattern.exec(content)) !== null) {
+      assignees.push(match[1])
+    }
+    return assignees
+  }
+
+  extractDueDate(content) {
+    const dueDatePattern = /due:(\d{4}-\d{2}-\d{2})/
+    const match = content.match(dueDatePattern)
+    return match ? match[1] : null
+  }
+
+  removeMetadata(content) {
+    // Remove tags, assignees, due dates for clean display
+    return content
+      .replace(/#[\w-]+/g, '')
+      .replace(/@[\w-]+/g, '')
+      .replace(/due:\d{4}-\d{2}-\d{2}/g, '')
+      .trim()
+  }
+
+  buildTaskHierarchy(tasks) {
+    const hierarchy = []
+    const stack = []
+
+    for (const task of tasks) {
+      // Pop stack until we find the parent level
+      while (stack.length > 0 && stack[stack.length - 1].indent >= task.indent) {
+        stack.pop()
+      }
+
+      if (stack.length === 0) {
+        // Top-level task
+        hierarchy.push(task)
+      } else {
+        // Subtask
+        const parent = stack[stack.length - 1]
+        parent.subtasks.push(task)
+        task.parent = parent
+      }
+
+      stack.push(task)
+    }
+
+    return hierarchy
+  }
+
+  organizeColumns() {
+    this.columns = new Map([
+      ['todo', { title: 'Todo', tasks: [] }],
+      ['in-progress', { title: 'In Progress', tasks: [] }],
+      ['done', { title: 'Done', tasks: [] }]
+    ])
+
+    for (const task of this.tasks) {
+      if (task.checked) {
+        this.columns.get('done').tasks.push(task)
+      } else if (task.tags.some(tag => ['in-progress', 'doing', 'wip'].includes(tag))) {
+        this.columns.get('in-progress').tasks.push(task)
+      } else {
+        this.columns.get('todo').tasks.push(task)
+      }
+    }
+  }
+
+  render() {
+    const board = document.getElementById('kanban-board')
+    board.innerHTML = ''
+
+    for (const [columnId, column] of this.columns) {
+      const columnEl = this.createColumn(columnId, column)
+      board.appendChild(columnEl)
+    }
+
+    this.initializeDragDrop()
+  }
+
+  createColumn(columnId, column) {
+    const col = document.createElement('div')
+    col.className = 'kanban-column'
+    col.dataset.columnId = columnId
+
+    const header = document.createElement('div')
+    header.className = 'column-header'
+    header.innerHTML = `
+      <h3>${column.title}</h3>
+      <span class="task-count">${column.tasks.length}</span>
+    `
+
+    const taskContainer = document.createElement('div')
+    taskContainer.className = 'task-container'
+
+    for (const task of column.tasks) {
+      const taskCard = this.createTaskCard(task)
+      taskContainer.appendChild(taskCard)
+    }
+
+    col.appendChild(header)
+    col.appendChild(taskContainer)
+
+    return col
+  }
+
+  createTaskCard(task) {
+    const card = document.createElement('div')
+    card.className = 'task-card'
+    card.dataset.lineNumber = task.lineNumber
+    card.draggable = true
+
+    // Progress indicator for parent tasks
+    let progressHTML = ''
+    if (task.subtasks.length > 0) {
+      const completed = task.subtasks.filter(st => st.checked).length
+      const total = task.subtasks.length
+      const percentage = Math.round((completed / total) * 100)
+      progressHTML = `
+        <div class="task-progress">
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${percentage}%"></div>
+          </div>
+          <span class="progress-text">${completed}/${total}</span>
+        </div>
+      `
+    }
+
+    // Due date indicator
+    let dueDateHTML = ''
+    if (task.dueDate) {
+      const daysUntil = this.getDaysUntilDue(task.dueDate)
+      const urgencyClass = daysUntil < 0 ? 'overdue' : daysUntil < 3 ? 'urgent' : ''
+      dueDateHTML = `<span class="due-date ${urgencyClass}">📅 ${task.dueDate}</span>`
+    }
+
+    // Assignees
+    let assigneesHTML = ''
+    if (task.assignees.length > 0) {
+      assigneesHTML = `<div class="assignees">${task.assignees.map(a => `<span class="assignee">@${a}</span>`).join('')}</div>`
+    }
+
+    // Header context
+    let contextHTML = ''
+    if (task.header) {
+      contextHTML = `<div class="task-context">${task.header.title}</div>`
+    }
+
+    card.innerHTML = `
+      <div class="task-content">${task.content}</div>
+      ${progressHTML}
+      ${contextHTML}
+      ${dueDateHTML}
+      ${assigneesHTML}
+      <div class="task-actions">
+        <button class="edit-task" title="Edit in document">✏️</button>
+        <button class="delete-task" title="Delete task">🗑️</button>
+      </div>
+    `
+
+    // Click to jump to line in text editor
+    card.querySelector('.edit-task').onclick = () => {
+      this.exitKanbanView()
+      this.editor.goToLine(task.lineNumber)
+    }
+
+    card.querySelector('.delete-task').onclick = () => {
+      this.deleteTask(task)
+    }
+
+    return card
+  }
+
+  getDaysUntilDue(dueDate) {
+    const due = new Date(dueDate)
+    const now = new Date()
+    const diffTime = due - now
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays
+  }
+
+  initializeDragDrop() {
+    let draggedCard = null
+
+    document.querySelectorAll('.task-card').forEach(card => {
+      card.addEventListener('dragstart', (e) => {
+        draggedCard = card
+        card.classList.add('dragging')
+      })
+
+      card.addEventListener('dragend', (e) => {
+        card.classList.remove('dragging')
+      })
+    })
+
+    document.querySelectorAll('.task-container').forEach(container => {
+      container.addEventListener('dragover', (e) => {
+        e.preventDefault()
+        const afterElement = this.getDragAfterElement(container, e.clientY)
+        if (afterElement == null) {
+          container.appendChild(draggedCard)
+        } else {
+          container.insertBefore(draggedCard, afterElement)
+        }
+      })
+
+      container.addEventListener('drop', (e) => {
+        e.preventDefault()
+        const columnId = container.closest('.kanban-column').dataset.columnId
+        const taskLineNumber = parseInt(draggedCard.dataset.lineNumber)
+        this.moveTaskToColumn(taskLineNumber, columnId)
+      })
+    })
+  }
+
+  getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.task-card:not(.dragging)')]
+
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect()
+      const offset = y - box.top - box.height / 2
+
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child }
+      } else {
+        return closest
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element
+  }
+
+  moveTaskToColumn(lineNumber, targetColumn) {
+    const line = this.editor.getLine(lineNumber)
+    let newLine = line
+
+    // Remove existing status tags
+    newLine = newLine.replace(/#(todo|in-progress|doing|wip|done)/g, '')
+
+    // Update checkbox state
+    if (targetColumn === 'done') {
+      newLine = newLine.replace(/- \[ \]/, '- [x]')
+      // Remove any progress tags
+      newLine = newLine.trim()
+    } else {
+      newLine = newLine.replace(/- \[x\]/, '- [ ]')
+
+      // Add appropriate tag
+      if (targetColumn === 'in-progress') {
+        newLine = newLine.trim() + ' #in-progress'
+      } else if (targetColumn === 'todo') {
+        newLine = newLine.trim() + ' #todo'
+      }
+    }
+
+    // Update the line in editor
+    this.editor.replaceLine(lineNumber, newLine.trim())
+
+    // Trigger auto-save
+    this.editor.triggerSave()
+
+    // Re-render kanban board
+    this.refresh()
+  }
+
+  deleteTask(task) {
+    if (confirm(`Delete task: "${task.content}"?`)) {
+      this.editor.deleteLine(task.lineNumber)
+      this.editor.triggerSave()
+      this.refresh()
+    }
+  }
+
+  refresh() {
+    // Re-parse and re-render
+    this.tasks = this.parseTasksFromDocument()
+    this.organizeColumns()
+    this.render()
+  }
+}
+```
+
+### 11.5 UI Layout
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  FoldingText          [📝 Text] [📊 Kanban]    [☰ Menu] │
+├─────────────────────────────────────────────────────────┤
+│                                                           │
+│  ┌───────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   Todo    │  │  In Progress │  │     Done     │     │
+│  │    (12)   │  │      (5)     │  │     (23)     │     │
+│  ├───────────┤  ├──────────────┤  ├──────────────┤     │
+│  │┌─────────┐│  │┌────────────┐│  │┌────────────┐│     │
+│  ││ Task 1  ││  ││ Task 2     ││  ││ Task 3     ││     │
+│  ││ @john   ││  ││ Progress:  ││  ││            ││     │
+│  ││📅 Jan 15││  ││ ▓▓▓░░ 3/5  ││  ││            ││     │
+│  │└─────────┘│  │└────────────┘│  │└────────────┘│     │
+│  │┌─────────┐│  │┌────────────┐│  │┌────────────┐│     │
+│  ││ Task 4  ││  ││ Task 5     ││  ││ Task 6     ││     │
+│  ││         ││  ││ @sarah     ││  ││            ││     │
+│  │└─────────┘│  │└────────────┘│  │└────────────┘│     │
+│  └───────────┘  └──────────────┘  └──────────────┘     │
+│                                                           │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 11.6 Keyboard Shortcuts
+
+```
+Cmd/Ctrl + K         Toggle kanban view
+Cmd/Ctrl + Shift + K Open kanban settings
+←/→                  Move between columns (in kanban)
+↑/↓                  Navigate tasks (in kanban)
+Enter                Edit task in text editor
+Delete               Delete selected task
+```
+
+### 11.7 CSS Styling
+
+```css
+.kanban-board {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  height: 100%;
+  overflow-x: auto;
+}
+
+.kanban-column {
+  flex: 1;
+  min-width: 300px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--border);
+}
+
+.task-count {
+  background: var(--accent);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+}
+
+.task-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 200px;
+}
+
+.task-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  cursor: move;
+  transition: all 0.2s;
+}
+
+.task-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transform: translateY(-2px);
+}
+
+.task-card.dragging {
+  opacity: 0.5;
+  transform: rotate(3deg);
+}
+
+.task-content {
+  font-size: 0.9375rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.task-progress {
+  margin: 0.5rem 0;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--bg-secondary);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.progress-text {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.task-context {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.due-date {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  margin-top: 0.5rem;
+}
+
+.due-date.urgent {
+  background: #ff9800;
+  color: white;
+}
+
+.due-date.overdue {
+  background: #f44336;
+  color: white;
+}
+
+.assignees {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.assignee {
+  font-size: 0.75rem;
+  background: var(--accent);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+}
+
+.task-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.task-card:hover .task-actions {
+  opacity: 1;
+}
+
+.task-actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.task-actions button:hover {
+  opacity: 1;
+}
+```
+
+### 11.8 Features
+
+**Benefits:**
+- Visual project management without leaving the markdown editor
+- Drag-and-drop task organization
+- Progress tracking for parent tasks with subtasks
+- Due date visualization with urgency indicators
+- Assignee tracking
+- Quick navigation back to text editor
+- No separate data format - everything stays as plain markdown
+
+**Sync Behavior:**
+- Changes in kanban view immediately update the markdown document
+- Changes in text editor (when toggling back) are reflected in kanban on next view
+- Auto-save triggers on every kanban operation
+- Fold state preserved when switching views
+
+**Use Cases:**
+- Project task management within notes
+- Sprint planning
+- Personal todo organization
+- Team collaboration (with assignees)
+- Quick visual overview of document tasks
+- Drag-and-drop prioritization
+
+---
+
+## 12. Performance Optimizations
 
 ### 11.1 Selection-Aware Virtual Scrolling
 **Critical**: When user selects text, don't despawn lines from DOM
@@ -3508,23 +4867,635 @@ Cmd/Ctrl + 0          Reset font size
 
 ---
 
-### Phase 10: Polish & Additional Features (Post-MVP)
+### Phase 10: Kanban View & Content Management
+**Goal**: Alternative visualization and content maintenance
+
+- [ ] Kanban board view for checkbox tasks
+- [ ] Task parser with tags, assignees, due dates
+- [ ] Drag-and-drop between columns (Todo/In Progress/Done)
+- [ ] Sync kanban changes with markdown document
+- [ ] Progress indicators for parent tasks
+- [ ] Scrappy stale header detection
+- [ ] Header metadata tracking (created, edited, viewed)
+- [ ] Staleness scoring algorithm
+- [ ] Archive functionality
+- [ ] Content preview (head/tail display)
+
+**Deliverable**: Kanban project management mode and intelligent content cleanup assistant
+
+---
+
+### Phase 11: GitHub Integration & Advanced Encryption
+**Goal**: Cloud backup and selective security
+
+- [ ] GitHub auto-sync setup and configuration
+- [ ] Auto-export every 1 minute with change detection
+- [ ] GitHub API integration (push/pull)
+- [ ] Conflict detection and resolution
+- [ ] Per-header encryption (🔒 indicator)
+- [ ] Mixed encrypted/plain document support
+- [ ] Silent import failure for wrong passwords
+- [ ] Environment ID for sync detection
+- [ ] Status bar sync indicator
+
+**Deliverable**: Automatic cloud backup and granular encryption control
+
+---
+
+### Phase 12: Polish & Additional Features (Post-MVP)
 **Goal**: Nice-to-have enhancements
 
 - [ ] Multi-document management improvements
 - [ ] Full-text search across documents
 - [ ] Outline view sidebar
-- [ ] Todo list syntax support
 - [ ] Tags/metadata
 - [ ] Document templates
 - [ ] Keyboard shortcut customization
 - [ ] Mobile/tablet optimization
 - [ ] Advanced variable functions (arrays, dates, strings)
 - [ ] Bulk header operations in restructure mode
+- [ ] Collaborative editing (WebRTC)
+- [ ] Plugin system
+
+**Deliverable**: Additional polish and power-user features
 
 ---
 
-## 12. Technical Challenges & Solutions
+## 12. Scrappy: Stale Header Detection
+
+**AI-Powered Content Maintenance Assistant**
+
+"Scrappy" analyzes document headers to identify stale, unused, or outdated content that can potentially be deleted. It provides suggestions based on edit frequency, view activity, and content age, helping users maintain clean, organized documents.
+
+**Concept:**
+
+Over time, documents accumulate outdated notes, completed project sections, and abandoned ideas. Scrappy helps identify these "dead" sections by analyzing:
+- Last edited date
+- Last viewed date
+- Header age
+- Content patterns (e.g., "TODO" markers that haven't been touched)
+
+**Features:**
+- Automated stale content detection
+- Preview of header content (first 8 and last 8 lines)
+- Bulk selection for deletion
+- Safe archival mode (move to archive header instead of delete)
+- Configurable staleness thresholds
+- Manual overrides (mark as "keep forever")
+
+**Implementation:**
+
+```javascript
+class ScrappyAnalyzer {
+  constructor(storage, editor) {
+    this.storage = storage
+    this.editor = editor
+    this.staleThreshold = 90 // days
+    this.metadata = new Map() // headerPath -> { lastEdited, lastViewed, created }
+  }
+
+  async analyzeDocument() {
+    const headers = this.parseHeaders()
+    const staleHeaders = []
+    const now = Date.now()
+
+    for (const header of headers) {
+      const meta = await this.getHeaderMetadata(header.path)
+
+      if (!meta) {
+        // No metadata yet, create it
+        await this.trackHeaderActivity(header.path, 'created')
+        continue
+      }
+
+      const daysSinceEdited = this.getDaysSince(meta.lastEdited || meta.created)
+      const daysSinceViewed = this.getDaysSince(meta.lastViewed || meta.created)
+
+      // Calculate staleness score
+      const staleScore = this.calculateStaleScore({
+        daysSinceEdited,
+        daysSinceViewed,
+        headerAge: this.getDaysSince(meta.created),
+        content: header.content,
+        hasChildren: header.children.length > 0
+      })
+
+      if (staleScore > 0.7) { // Threshold for "stale"
+        staleHeaders.push({
+          header: header,
+          meta: meta,
+          staleScore: staleScore,
+          reasons: this.getStaleReasons(meta, header),
+          preview: this.generatePreview(header.content)
+        })
+      }
+    }
+
+    // Sort by staleness score (most stale first)
+    staleHeaders.sort((a, b) => b.staleScore - a.staleScore)
+
+    return staleHeaders
+  }
+
+  calculateStaleScore({ daysSinceEdited, daysSinceViewed, headerAge, content, hasChildren }) {
+    let score = 0
+
+    // Time-based factors
+    if (daysSinceEdited > this.staleThreshold) {
+      score += 0.4 * Math.min(daysSinceEdited / 365, 1) // Max 0.4 after 1 year
+    }
+
+    if (daysSinceViewed > this.staleThreshold / 2) {
+      score += 0.2 * Math.min(daysSinceViewed / 180, 1) // Max 0.2 after 6 months
+    }
+
+    // Content-based factors
+    if (content.includes('TODO') || content.includes('- [ ]')) {
+      // Has TODO items - check if recently updated
+      if (daysSinceEdited > 60) {
+        score += 0.2 // Stale TODOs
+      }
+    }
+
+    if (content.includes('DONE') || content.includes('COMPLETED')) {
+      score += 0.15 // Completed projects might be archivable
+    }
+
+    if (this.containsOutdatedDates(content)) {
+      score += 0.1 // References dates in the past
+    }
+
+    // Children penalty (less likely to delete headers with many children)
+    if (hasChildren) {
+      score *= 0.7
+    }
+
+    return Math.min(score, 1.0)
+  }
+
+  getStaleReasons(meta, header) {
+    const reasons = []
+    const daysSinceEdited = this.getDaysSince(meta.lastEdited || meta.created)
+    const daysSinceViewed = this.getDaysSince(meta.lastViewed || meta.created)
+
+    if (daysSinceEdited > this.staleThreshold) {
+      reasons.push(`Not edited in ${daysSinceEdited} days`)
+    }
+
+    if (daysSinceViewed > this.staleThreshold / 2) {
+      reasons.push(`Not viewed in ${daysSinceViewed} days`)
+    }
+
+    if (header.content.includes('DONE') || header.content.includes('COMPLETED')) {
+      reasons.push('Marked as completed')
+    }
+
+    if (this.containsOutdatedDates(header.content)) {
+      reasons.push('Contains outdated dates')
+    }
+
+    return reasons
+  }
+
+  generatePreview(content) {
+    const lines = content.split('\n').filter(line => line.trim().length > 0)
+
+    if (lines.length <= 16) {
+      // Show all lines
+      return {
+        head: lines,
+        tail: [],
+        truncated: false
+      }
+    }
+
+    // Show first 8 and last 8 lines
+    return {
+      head: lines.slice(0, 8),
+      tail: lines.slice(-8),
+      truncated: true,
+      omittedLines: lines.length - 16
+    }
+  }
+
+  containsOutdatedDates(content) {
+    // Look for dates in the past (e.g., "2023-01-15", "January 2023")
+    const datePatterns = [
+      /20\d{2}-\d{2}-\d{2}/g,  // YYYY-MM-DD
+      /\d{1,2}\/\d{1,2}\/20\d{2}/g,  // MM/DD/YYYY
+      /(January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2}/gi
+    ]
+
+    const now = new Date()
+    const currentYear = now.getFullYear()
+
+    for (const pattern of datePatterns) {
+      const matches = content.match(pattern)
+      if (matches) {
+        for (const match of matches) {
+          const date = new Date(match)
+          if (date < now && (currentYear - date.getFullYear()) >= 1) {
+            return true // Found date at least 1 year old
+          }
+        }
+      }
+    }
+
+    return false
+  }
+
+  getDaysSince(timestamp) {
+    if (!timestamp) return Infinity
+    const now = Date.now()
+    const diff = now - timestamp
+    return Math.floor(diff / (1000 * 60 * 60 * 24))
+  }
+
+  async trackHeaderActivity(headerPath, eventType) {
+    // Track when headers are created, edited, or viewed
+    const key = `header_meta:${headerPath}`
+    let meta = await this.storage.get(key) || {}
+
+    const now = Date.now()
+
+    switch (eventType) {
+      case 'created':
+        meta.created = meta.created || now
+        break
+      case 'edited':
+        meta.lastEdited = now
+        break
+      case 'viewed':
+        meta.lastViewed = now
+        break
+    }
+
+    await this.storage.set(key, meta)
+  }
+
+  async getHeaderMetadata(headerPath) {
+    const key = `header_meta:${headerPath}`
+    return await this.storage.get(key)
+  }
+
+  parseHeaders() {
+    const lines = this.editor.getLines()
+    const headers = []
+    let currentHeader = null
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const headerMatch = line.match(/^(#{1,6})\s+(.+)/)
+
+      if (headerMatch) {
+        // Save previous header
+        if (currentHeader) {
+          currentHeader.content = this.getHeaderContent(currentHeader.lineNumber)
+          headers.push(currentHeader)
+        }
+
+        // Start new header
+        currentHeader = {
+          level: headerMatch[1].length,
+          title: headerMatch[2],
+          path: this.getHeaderPath(i),
+          lineNumber: i,
+          children: []
+        }
+      }
+    }
+
+    // Save last header
+    if (currentHeader) {
+      currentHeader.content = this.getHeaderContent(currentHeader.lineNumber)
+      headers.push(currentHeader)
+    }
+
+    return headers
+  }
+
+  getHeaderContent(startLine) {
+    const lines = this.editor.getLines()
+    const startLevel = this.getHeaderLevel(startLine)
+    const contentLines = []
+
+    for (let i = startLine; i < lines.length; i++) {
+      const line = lines[i]
+      const headerMatch = line.match(/^(#{1,6})\s+/)
+
+      if (i > startLine && headerMatch) {
+        const level = headerMatch[1].length
+        if (level <= startLevel) {
+          // Found next header at same or higher level
+          break
+        }
+      }
+
+      contentLines.push(line)
+    }
+
+    return contentLines.join('\n')
+  }
+
+  showScrappyUI(staleHeaders) {
+    // Open modal with stale headers
+    const modal = document.createElement('div')
+    modal.className = 'scrappy-modal'
+    modal.innerHTML = `
+      <div class="scrappy-content">
+        <h2>🗑️ Scrappy: Stale Content Detection</h2>
+        <p>Found ${staleHeaders.length} potentially stale headers</p>
+
+        <div class="stale-headers-list">
+          ${staleHeaders.map((item, idx) => this.renderStaleHeader(item, idx)).join('')}
+        </div>
+
+        <div class="scrappy-actions">
+          <button id="scrappy-archive-selected">Archive Selected</button>
+          <button id="scrappy-delete-selected">Delete Selected</button>
+          <button id="scrappy-cancel">Cancel</button>
+        </div>
+      </div>
+    `
+
+    document.body.appendChild(modal)
+
+    // Set up event listeners
+    this.setupScrappyEventListeners(modal, staleHeaders)
+  }
+
+  renderStaleHeader(item, idx) {
+    const { header, staleScore, reasons, preview } = item
+
+    return `
+      <div class="stale-header-item">
+        <div class="header-checkbox">
+          <input type="checkbox" id="stale-${idx}" data-header-path="${header.path}">
+        </div>
+        <div class="header-info">
+          <div class="header-title">
+            <label for="stale-${idx}">
+              ${'#'.repeat(header.level)} ${header.title}
+            </label>
+            <span class="stale-score">${Math.round(staleScore * 100)}% stale</span>
+          </div>
+          <div class="stale-reasons">
+            ${reasons.map(r => `<span class="reason-tag">${r}</span>`).join('')}
+          </div>
+          <div class="content-preview">
+            <div class="preview-lines">
+              ${preview.head.map(line => `<div class="preview-line">${this.escapeHtml(line)}</div>`).join('')}
+            </div>
+            ${preview.truncated ? `
+              <div class="preview-truncated">
+                ... ${preview.omittedLines} lines omitted ...
+              </div>
+              <div class="preview-lines">
+                ${preview.tail.map(line => `<div class="preview-line">${this.escapeHtml(line)}</div>`).join('')}
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+    `
+  }
+
+  escapeHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+  }
+
+  setupScrappyEventListeners(modal, staleHeaders) {
+    const archiveBtn = modal.querySelector('#scrappy-archive-selected')
+    const deleteBtn = modal.querySelector('#scrappy-delete-selected')
+    const cancelBtn = modal.querySelector('#scrappy-cancel')
+
+    archiveBtn.onclick = () => this.archiveSelected(modal, staleHeaders)
+    deleteBtn.onclick = () => this.deleteSelected(modal, staleHeaders)
+    cancelBtn.onclick = () => modal.remove()
+  }
+
+  archiveSelected(modal, staleHeaders) {
+    const selected = this.getSelectedHeaders(modal)
+
+    if (selected.length === 0) {
+      alert('No headers selected')
+      return
+    }
+
+    if (!confirm(`Archive ${selected.length} header(s)?`)) {
+      return
+    }
+
+    // Create "Archive" header if it doesn't exist
+    this.ensureArchiveHeader()
+
+    // Move selected headers to archive
+    for (const headerPath of selected) {
+      const item = staleHeaders.find(h => h.header.path === headerPath)
+      if (item) {
+        this.moveHeaderToArchive(item.header)
+      }
+    }
+
+    modal.remove()
+    alert(`Archived ${selected.length} header(s)`)
+  }
+
+  deleteSelected(modal, staleHeaders) {
+    const selected = this.getSelectedHeaders(modal)
+
+    if (selected.length === 0) {
+      alert('No headers selected')
+      return
+    }
+
+    if (!confirm(`Permanently delete ${selected.length} header(s)? This cannot be undone.`)) {
+      return
+    }
+
+    // Delete selected headers
+    for (const headerPath of selected) {
+      const item = staleHeaders.find(h => h.header.path === headerPath)
+      if (item) {
+        this.deleteHeader(item.header)
+      }
+    }
+
+    modal.remove()
+    alert(`Deleted ${selected.length} header(s)`)
+  }
+
+  getSelectedHeaders(modal) {
+    const checkboxes = modal.querySelectorAll('input[type="checkbox"]:checked')
+    return Array.from(checkboxes).map(cb => cb.dataset.headerPath)
+  }
+
+  ensureArchiveHeader() {
+    // Check if "# Archive" header exists at end of document
+    const lines = this.editor.getLines()
+    const hasArchive = lines.some(line => line.trim() === '# Archive')
+
+    if (!hasArchive) {
+      // Add archive header at end
+      this.editor.appendLines([
+        '',
+        '# Archive',
+        '',
+        'Archived headers are moved here for safekeeping.',
+        ''
+      ])
+    }
+  }
+
+  moveHeaderToArchive(header) {
+    // Extract header content
+    const content = this.getHeaderContent(header.lineNumber)
+
+    // Add timestamp to header title
+    const timestamp = new Date().toISOString().split('T')[0]
+    const archivedTitle = `${header.title} (archived ${timestamp})`
+
+    // Find archive section
+    const archiveLine = this.findHeaderLine('# Archive')
+
+    // Insert under archive
+    this.editor.insertLinesAt(archiveLine + 1, [
+      '',
+      `${'#'.repeat(header.level + 1)} ${archivedTitle}`,
+      ...content.split('\n').slice(1) // Skip original header line
+    ])
+
+    // Delete original
+    this.deleteHeader(header)
+  }
+
+  deleteHeader(header) {
+    const startLine = header.lineNumber
+    const endLine = this.findHeaderEnd(startLine, header.level)
+
+    for (let i = endLine; i >= startLine; i--) {
+      this.editor.deleteLine(i)
+    }
+  }
+
+  findHeaderLine(title) {
+    const lines = this.editor.getLines()
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === title) {
+        return i
+      }
+    }
+    return -1
+  }
+
+  findHeaderEnd(startLine, headerLevel) {
+    const lines = this.editor.getLines()
+
+    for (let i = startLine + 1; i < lines.length; i++) {
+      const headerMatch = lines[i].match(/^(#{1,6})\s+/)
+      if (headerMatch) {
+        const level = headerMatch[1].length
+        if (level <= headerLevel) {
+          return i - 1
+        }
+      }
+    }
+
+    return lines.length - 1
+  }
+}
+```
+
+**UI/UX:**
+
+**Scrappy Button:**
+```
+Toolbar: [...other buttons...] | [🗑️ Run Scrappy]
+```
+
+**Scrappy Modal:**
+```
+┌────────────────────────────────────────────────────────┐
+│ 🗑️ Scrappy: Stale Content Detection                   │
+├────────────────────────────────────────────────────────┤
+│                                                        │
+│ Found 12 potentially stale headers                    │
+│                                                        │
+│ ┌──────────────────────────────────────────────────┐ │
+│ │ [✓] ## Old Project Ideas         (85% stale)     │ │
+│ │     Not edited in 245 days | Marked as completed │ │
+│ │     ──────────────────────────────────────────── │ │
+│ │     ## Old Project Ideas                         │ │
+│ │     COMPLETED 2024-01-15                         │ │
+│ │     - Build a todo app                           │ │
+│ │     - Create a blog                              │ │
+│ │     - Learn Rust                                 │ │
+│ │     ... 34 lines omitted ...                     │ │
+│ │     Last update: "Project finished!"             │ │
+│ └──────────────────────────────────────────────────┘ │
+│                                                        │
+│ ┌──────────────────────────────────────────────────┐ │
+│ │ [ ] ### Meeting Notes 2023       (72% stale)     │ │
+│ │     Not edited in 180 days | Contains outdated dates│
+│ │     ──────────────────────────────────────────── │ │
+│ │     ### Meeting Notes 2023                       │ │
+│ │     Jan 15, 2023 - Team sync                     │ │
+│ │     - Discussed Q1 goals                         │ │
+│ │     ... 12 lines omitted ...                     │ │
+│ └──────────────────────────────────────────────────┘ │
+│                                                        │
+│ [Select All] [Select None]                            │
+│                                                        │
+│ [Archive Selected] [Delete Selected] [Cancel]         │
+└────────────────────────────────────────────────────────┘
+```
+
+**Features:**
+
+1. **Smart Detection**: Uses multiple signals to identify stale content
+2. **Preview Mode**: Shows head and tail of content (first 8, last 8 lines)
+3. **Bulk Operations**: Select multiple headers for batch archive/delete
+4. **Safe Archive**: Move to archive section instead of permanent deletion
+5. **Staleness Score**: Visual indicator of how stale (0-100%)
+6. **Reason Tags**: Clear explanation of why header is considered stale
+7. **Manual Override**: Users can mark headers as "keep forever"
+8. **Configurable Thresholds**: Adjust staleness detection sensitivity
+
+**Automatic Tracking:**
+
+Scrappy automatically tracks header activity in the background:
+- **On Edit**: Updates `lastEdited` timestamp for header
+- **On View**: Updates `lastViewed` when header is focused/scrolled into view
+- **On Create**: Records `created` timestamp for new headers
+
+**Use Cases:**
+- Clean up completed project notes
+- Archive old meeting notes
+- Remove abandoned TODO lists
+- Identify outdated documentation sections
+- Maintain document hygiene over time
+- Reduce cognitive load by removing clutter
+
+**Configuration:**
+
+```
+Settings > Scrappy Configuration
+
+Staleness Threshold: [90 days ▼]
+Auto-run frequency:  [Never ▼] (Manual, Daily, Weekly, Monthly)
+Default action:      (•) Archive ( ) Delete
+Show preview lines:  [8 .........]
+
+[Save Settings]
+```
+
+---
+
+## 13. Technical Challenges & Solutions
 
 ### Challenge 1: Contenteditable vs Textarea
 **Problem**: Contenteditable is complex but allows rich display; textarea is simple but plain
@@ -3847,7 +5818,381 @@ Decisions made based on user feedback:
 
 ---
 
-## 17. Summary
+## 18. Building with Claude Code: Parallelization Strategy
+
+**Multi-Instance Development Plan**
+
+This section outlines how to build FoldingText using multiple parallel Claude Code instances to maximize development velocity. The strategy divides work into independent modules that can be developed concurrently without conflicts.
+
+### 18.1 Development Philosophy
+
+**Key Principles:**
+1. **Serial Foundation First**: Build core infrastructure that all features depend on
+2. **Parallel Feature Development**: Once foundation is stable, parallelize independent features
+3. **Minimal Conflicts**: Each instance works on separate files/modules
+4. **Integration Points**: Define clear interfaces between modules upfront
+5. **Incremental Testing**: Each parallel track includes its own tests
+
+### 18.2 Phase 1: Serial Foundation (1-2 Weeks)
+
+**Single Instance - Core Infrastructure**
+
+These components must be built sequentially as they form the foundation:
+
+**Week 1: Basic Architecture**
+1. Project Setup
+   - File structure (`index.html`, `main.js`, module structure)
+   - Build configuration (if any)
+   - IndexedDB wrapper (`storage.js`)
+   - Basic HTML shell with editor container
+
+2. Core Editor
+   - Textarea-based editor (`editor.js`)
+   - Line management (get/set/insert/delete lines)
+   - Cursor position tracking
+   - Basic event handling (input, selection change)
+   - Auto-save functionality
+
+3. Document Model
+   - Document data structure
+   - CRUD operations (create, read, update, delete)
+   - Persistence to IndexedDB
+   - Document switching
+
+**Week 2: Parsing & Rendering**
+4. Markdown Parser (`parser.js`)
+   - Line-based tokenization
+   - Header detection (# through ######)
+   - List detection
+   - Code block detection
+   - Incremental parsing
+
+5. Renderer (`renderer.js`)
+   - Syntax highlighting overlay
+   - Virtual scrolling foundation
+   - Line rendering pipeline
+   - Scroll event handling
+
+6. Module Integration
+   - Wire all modules together
+   - Test end-to-end (type → parse → render)
+   - Fix integration bugs
+   - Create module interfaces document
+
+**Deliverable**: Working editor with syntax highlighting, virtual scrolling, and persistence
+
+### 18.3 Phase 2: Parallel Feature Tracks (2-4 Weeks)
+
+Once the foundation is stable, split into **6 parallel Claude Code instances**:
+
+**Instance 1: Folding System** (`folding.js`, `fold-ui.css`)
+- Fold data structure and management
+- Selection-based fold creation
+- Smart fold detection
+- Fold/unfold UI indicators
+- Navigate between folds
+- Persist fold state
+- Header copy/paste functionality
+- **Files**: `js/modules/folding.js`, `css/folding.css`
+- **Tests**: `tests/folding.test.js`
+
+**Instance 2: Search & Navigation** (`search.js`, `navigation.js`)
+- Regex search engine
+- Scope control (document/header/nested)
+- Search UI (modal or sidebar)
+- URL-based focus navigation
+- Directory-style header paths
+- Browser history integration
+- **Files**: `js/modules/search.js`, `js/modules/navigation.js`, `css/search.css`
+- **Tests**: `tests/search.test.js`, `tests/navigation.test.js`
+
+**Instance 3: Rich Content** (`richcontent.js`, `richcontent.css`)
+- Inline images (upload, resize, display)
+- File attachments
+- Image storage in IndexedDB
+- Graphical table rendering (toggle)
+- Mermaid diagram integration
+- Interactive checkboxes
+- **Files**: `js/modules/richcontent.js`, `css/richcontent.css`
+- **Tests**: `tests/richcontent.test.js`
+
+**Instance 4: Export/Import** (`export.js`, `import.js`, `crypto.worker.js`)
+- Export manager with compression
+- Encryption (per-header and full)
+- Import with three modes (backup/sync/inject)
+- Environment ID generation
+- Export/Import UI dialogs
+- **Files**: `js/modules/export.js`, `js/modules/import.js`, `js/workers/crypto.worker.js`
+- **Tests**: `tests/export.test.js`, `tests/import.test.js`
+
+**Instance 5: Themes & UI Polish** (`themes.js`, `keyboard.js`, `themes.css`)
+- Theme system
+- Theme editor
+- Built-in theme library
+- Keyboard shortcuts manager
+- Settings panel
+- Command palette
+- **Files**: `js/modules/themes.js`, `js/modules/keyboard.js`, `css/themes.css`
+- **Tests**: `tests/themes.test.js`
+
+**Instance 6: Code Previews** (`codepreview.js`, `codepreview.css`)
+- HTML code block preview in iframe
+- Sandbox security
+- Debug console for previews
+- Resizable preview windows
+- Preview window management
+- **Files**: `js/modules/codepreview.js`, `css/codepreview.css`
+- **Tests**: `tests/codepreview.test.js`
+
+**Coordination:**
+- Daily standup: Share interface changes in shared document
+- Each instance commits to separate branch: `feature/folding`, `feature/search`, etc.
+- Main developer reviews PRs and integrates weekly
+
+### 18.4 Phase 3: Advanced Features (2-3 Weeks)
+
+Continue with **4 parallel instances**:
+
+**Instance 7: Inline Computation** (`compute.js`)
+- Variable parser and evaluator
+- Header-scoped variable system
+- Dependency resolution (topological sort)
+- Live result display with → symbol
+- Reactive updates
+- **Files**: `js/modules/compute.js`
+- **Tests**: `tests/compute.test.js`
+
+**Instance 8: Document Restructuring** (`restructure.js`, `restructure.css`)
+- Tree view parser
+- Drag-and-drop implementation
+- Bulk move operations
+- Keyboard shortcuts for restructuring
+- Apply changes back to document
+- **Files**: `js/modules/restructure.js`, `css/restructure.css`
+- **Tests**: `tests/restructure.test.js`
+
+**Instance 9: Kanban View** (`kanban.js`, `kanban.css`)
+- Task parser from checkboxes
+- Kanban board rendering
+- Drag-and-drop between columns
+- Sync with markdown document
+- Progress indicators
+- Due dates and assignees
+- **Files**: `js/modules/kanban.js`, `css/kanban.css`
+- **Tests**: `tests/kanban.test.js`
+
+**Instance 10: GitHub Auto-Sync** (`github-sync.js`)
+- GitHub API integration
+- Auto-sync every 1 minute
+- Conflict detection and resolution
+- Settings UI
+- Status bar indicator
+- **Files**: `js/modules/github-sync.js`
+- **Tests**: `tests/github-sync.test.js`
+
+### 18.5 Phase 4: Polish & Integration (1-2 Weeks)
+
+**Instance 11: Scrappy** (`scrappy.js`, `scrappy.css`)
+- Stale header detection algorithm
+- Header metadata tracking
+- Preview generation (head/tail)
+- Archive functionality
+- Scrappy UI modal
+- **Files**: `js/modules/scrappy.js`, `css/scrappy.css`
+- **Tests**: `tests/scrappy.test.js`
+
+**Instance 12: Performance & Testing** (Main Developer)
+- Virtual scrolling optimizations
+- Selection-aware rendering refinement
+- Memory profiling and fixes
+- Cross-browser testing
+- Mobile responsiveness
+- E2E integration tests
+- **Files**: Performance fixes across all modules, `tests/e2e/`
+
+### 18.6 Integration Strategy
+
+**Module Interface Contract** (Define upfront):
+
+```javascript
+// editor.js - Core interface
+class Editor {
+  getLine(lineNumber) // Get line content
+  getLines() // Get all lines
+  setLine(lineNumber, content) // Update line
+  insertLine(lineNumber, content) // Insert line
+  deleteLine(lineNumber) // Delete line
+  getLineCount() // Total lines
+  getCursorPosition() // { line, col }
+  setCursorPosition(line, col) // Set cursor
+  addEventListener(event, handler) // Standard events
+}
+
+// storage.js - Core interface
+class Storage {
+  async getDocument(id) // Load document
+  async saveDocument(doc) // Save document
+  async listDocuments() // Get all docs
+  async deleteDocument(id) // Delete doc
+  async getSetting(key) // Get setting
+  async setSetting(key, value) // Save setting
+}
+
+// parser.js - Core interface
+class Parser {
+  parseLine(line) // Tokenize single line
+  parseDocument(lines) // Parse full document
+  getHeaderPath(lineNumber) // Get header path for line
+  findHeader(path) // Find header by path
+}
+```
+
+**Integration Checklist:**
+- [ ] All modules export a class with documented interface
+- [ ] Each module has unit tests
+- [ ] Modules communicate via events or direct calls to core interfaces
+- [ ] No circular dependencies
+- [ ] Each PR includes integration notes
+
+### 18.7 Git Workflow
+
+**Branch Strategy:**
+```
+main (protected)
+├── foundation (Phase 1 - merged after Week 2)
+├── feature/folding (Instance 1)
+├── feature/search (Instance 2)
+├── feature/richcontent (Instance 3)
+├── feature/export-import (Instance 4)
+├── feature/themes (Instance 5)
+├── feature/codepreview (Instance 6)
+├── feature/compute (Instance 7)
+├── feature/restructure (Instance 8)
+├── feature/kanban (Instance 9)
+├── feature/github-sync (Instance 10)
+└── feature/scrappy (Instance 11)
+```
+
+**Merge Order:**
+1. Foundation → main (after Phase 1)
+2. Folding → main (enables many other features)
+3. Search & Navigation → main
+4. Themes → main (so other features can test with themes)
+5. Remaining features in any order as they complete
+6. Final integration and polish
+
+**Conflict Resolution:**
+- If two branches modify same file, second merge rebases on main
+- Core modules (`editor.js`, `storage.js`, `parser.js`) are frozen after Phase 1
+- Extensions to core go through interface expansion PR first
+
+### 18.8 Communication Protocol
+
+**Shared Document** (`PROGRESS.md` in repo):
+
+```markdown
+# Development Progress
+
+## Week 3 - Parallel Development
+
+### Instance 1 (Folding) - @claude-1
+Status: In Progress
+Completed:
+- [x] Fold data structure
+- [x] Selection-based folding
+Current: Working on smart fold detection
+Blockers: None
+Interface changes: Added `editor.getSelection()` method
+
+### Instance 2 (Search) - @claude-2
+Status: In Progress
+Completed:
+- [x] Regex search engine
+- [x] Scope control
+Current: Building search UI
+Blockers: Waiting for navigation paths from Instance 2
+Interface changes: None
+
+[... etc for all instances ...]
+```
+
+**Daily Updates**: Each instance appends to PROGRESS.md
+**Weekly Integration**: Main developer merges completed features
+
+### 18.9 Estimated Timeline
+
+**Total: 6-10 Weeks**
+
+- Phase 1 (Serial Foundation): 2 weeks
+- Phase 2 (6 parallel tracks): 2-4 weeks
+- Phase 3 (4 parallel tracks): 2-3 weeks
+- Phase 4 (Polish & Integration): 1-2 weeks
+
+**With full parallelization**: ~6-7 weeks total
+**With sequential development**: ~20-25 weeks
+
+**Speedup: 3-4x faster**
+
+### 18.10 Risk Mitigation
+
+**Potential Issues:**
+
+1. **Integration Conflicts**
+   - Mitigation: Freeze core interfaces after Phase 1
+   - Mitigation: Each instance has own CSS namespace
+
+2. **Feature Dependencies**
+   - Mitigation: Phase ordering ensures dependencies are met
+   - Mitigation: Mock interfaces if needed
+
+3. **Testing Gaps**
+   - Mitigation: Each instance includes unit tests
+   - Mitigation: Final integration testing phase
+
+4. **Communication Overhead**
+   - Mitigation: Async updates via shared document
+   - Mitigation: Clear interface contracts upfront
+
+### 18.11 Success Metrics
+
+**Phase 1 Complete:**
+- [ ] Can type in editor
+- [ ] Syntax highlighting works
+- [ ] Document saves to IndexedDB
+- [ ] Can switch between documents
+- [ ] Virtual scrolling smooth for 10K+ lines
+
+**Phase 2 Complete:**
+- [ ] All 6 feature tracks have passing tests
+- [ ] Each feature works in isolation
+- [ ] All PRs merged to main
+- [ ] No critical bugs in integrated build
+
+**Phase 3 Complete:**
+- [ ] All 4 advanced features implemented
+- [ ] Kanban view functional
+- [ ] GitHub sync working
+- [ ] Inline computation operational
+
+**Phase 4 Complete:**
+- [ ] Scrappy detects stale content
+- [ ] Performance meets targets (60fps scrolling, <100ms input latency)
+- [ ] All E2E tests passing
+- [ ] Production-ready build
+
+### 18.12 Post-Launch Parallel Tasks
+
+After MVP launch, continue parallel development for enhancements:
+
+**Instance A**: Mobile optimization
+**Instance B**: Advanced variable functions (arrays, dates)
+**Instance C**: Collaborative editing (WebRTC)
+**Instance D**: Plugin system
+**Instance E**: Advanced export formats (PDF, DOCX)
+
+---
+
+## 19. Summary
 
 This plan outlines a complete, feature-rich, performant, serverless markdown editor that goes far beyond basic note-taking. It combines powerful text editing with rich content support, advanced navigation, and robust data management - all running entirely client-side.
 
@@ -3856,17 +6201,20 @@ This plan outlines a complete, feature-rich, performant, serverless markdown edi
 2. **Selection-aware virtual scrolling**: Handle 100K+ lines while maintaining text selection capability
 3. **Inline computation**: Dynamic `$variable = expression` system with live results and header-scoped evaluation
 4. **Drag-and-drop restructuring**: Visual tree view for easy document reorganization
-5. **URL-based navigation**: Focus on any header via URL, with browser history integration
-6. **Scope-controlled search**: Regex search/replace within document, header, or nested sections
-7. **Directory-style paths**: Consistent `/Header/Subheader` syntax throughout the app
-8. **Discrete encryption**: Compressed, encrypted exports without obvious UI indicators
-9. **Smart import system**: Three modes (Backup, Sync, Inject) with environment ID detection for seamless content synchronization
-10. **Rich content**: Inline images, attachments, graphical tables, HTML previews, Mermaid diagrams
-11. **Interactive elements**: Clickable checkboxes with progress indicators, one-click header copy/paste
-12. **Custom themes**: Full theme editor with import/export
-13. **Performance-first**: Virtual scrolling, incremental parsing, Web Workers
-14. **Serverless & private**: 100% client-side, no backend required
-15. **CI/CD deployment**: Automated GitHub Pages deployment with PR preview environments
+5. **Kanban board view**: Transform checkbox tasks into visual project management board with drag-and-drop
+6. **URL-based navigation**: Focus on any header via URL, with browser history integration
+7. **Scope-controlled search**: Regex search/replace within document, header, or nested sections
+8. **Directory-style paths**: Consistent `/Header/Subheader` syntax throughout the app
+9. **Per-header encryption**: Selective encryption with 🔒 indicator, mixed encrypted/plain documents, silent import failures
+10. **Smart import system**: Three modes (Backup, Sync, Inject) with environment ID detection for seamless content synchronization
+11. **GitHub auto-sync**: Automatic 1-minute background sync to GitHub repository with conflict resolution
+12. **Scrappy AI assistant**: Intelligent stale content detection with staleness scoring and safe archival
+13. **Rich content**: Inline images, attachments, graphical tables, HTML previews, Mermaid diagrams
+14. **Interactive elements**: Clickable checkboxes with progress indicators, one-click header copy/paste
+15. **Custom themes**: Full theme editor with import/export
+16. **Performance-first**: Virtual scrolling, incremental parsing, Web Workers
+17. **Serverless & private**: 100% client-side, no backend required
+18. **CI/CD deployment**: Automated GitHub Pages deployment with PR preview environments
 
 **Feature Highlights**:
 - ✓ Plain markdown editing (no WYSIWYG bloat)
@@ -3874,6 +6222,7 @@ This plan outlines a complete, feature-rich, performant, serverless markdown edi
 - ✓ Handle massive files (100K+ lines) smoothly
 - ✓ Inline calculations with `$variable = expression` syntax
 - ✓ Drag-and-drop document restructuring mode
+- ✓ Kanban board view for task management
 - ✓ Regex search with scopes (document/header/nested)
 - ✓ URL navigation with shareable links
 - ✓ Images with resizing, file attachments
@@ -3882,8 +6231,11 @@ This plan outlines a complete, feature-rich, performant, serverless markdown edi
 - ✓ Mermaid diagram rendering (togglable, resizable, exportable)
 - ✓ Interactive checkboxes with nested task progress indicators
 - ✓ One-click header copy/paste (Cmd/Ctrl+Shift+C/X/V)
+- ✓ Per-header encryption with 🔒 indicator
 - ✓ Smart import with Backup/Sync/Inject modes
 - ✓ Environment ID detection for cross-device sync
+- ✓ GitHub auto-sync every 1 minute
+- ✓ Scrappy stale content detection and archival
 - ✓ Export/import with compression & encryption
 - ✓ Custom theme creator
 - ✓ Complete keyboard control
@@ -3909,7 +6261,9 @@ This plan outlines a complete, feature-rich, performant, serverless markdown edi
 - **Phase 7**: Search, navigation, smart import/export (power features with Backup/Sync/Inject modes)
 - **Phase 8**: Themes & customization (personalization)
 - **Phase 9**: Inline computation & restructuring (dynamic features)
-- **Phase 10**: Additional polish & features
+- **Phase 10**: Kanban view & content management (Scrappy)
+- **Phase 11**: GitHub integration & per-header encryption
+- **Phase 12**: Additional polish & power-user features
 
 **Next Steps**:
 1. ✅ Review this comprehensive plan
