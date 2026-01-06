@@ -219,17 +219,12 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Create preview directory
-        run: |
-          mkdir -p preview/pr-${{ github.event.pull_request.number }}
-          cp -r * preview/pr-${{ github.event.pull_request.number }}/ 2>/dev/null || true
-
-      - name: Deploy to preview branch
+      - name: Deploy PR preview to gh-pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./preview
-          publish_branch: gh-pages-preview
+          publish_dir: ./
+          publish_branch: gh-pages
           destination_dir: pr-${{ github.event.pull_request.number }}
           keep_files: true
 
@@ -300,10 +295,10 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout preview branch
+      - name: Checkout gh-pages branch
         uses: actions/checkout@v4
         with:
-          ref: gh-pages-preview
+          ref: gh-pages
 
       - name: Remove preview directory
         run: |
@@ -325,17 +320,36 @@ jobs:
 
 2. No additional secrets required - uses built-in `GITHUB_TOKEN`
 
-3. PR previews use a separate branch (`gh-pages-preview`) to avoid conflicts with production deployments
+3. Both production and PR previews deploy to the same `gh-pages` branch:
+   - Production: deployed to root (`/`)
+   - PR previews: deployed to subdirectories (`/pr-42/`, `/pr-43/`, etc.)
+   - `keep_files: true` ensures production and preview directories coexist
 
 **Features**
 
 - ✅ Automatic production deployment on push to main/master
 - ✅ Individual preview URLs for each PR (e.g., `username.github.io/quick-notes/pr-42/`)
+- ✅ Production and PR previews accessible simultaneously
 - ✅ Automatic comment in PR with preview link
 - ✅ Comment updates with each new commit
 - ✅ Automatic cleanup when PR is closed
 - ✅ No build step required (pure static files)
 - ✅ Fast deployment (typically < 2 minutes)
+
+**URL Structure Example:**
+
+```
+Production (main branch):
+https://username.github.io/quick-notes/
+
+PR #42 Preview:
+https://username.github.io/quick-notes/pr-42/
+
+PR #43 Preview:
+https://username.github.io/quick-notes/pr-43/
+
+All accessible at the same time!
+```
 
 **Alternative: Cloudflare Pages (optional)**
 
