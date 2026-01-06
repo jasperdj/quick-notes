@@ -25,6 +25,84 @@ A powerful, minimalist markdown editor that runs entirely in your browser. Think
 
 ---
 
+## 🚦 How to Use This Guide
+
+### Universal Prompt
+
+For **ALL** development work on folded, use this simple prompt:
+
+```
+Work on folded.
+```
+
+That's it! Claude will automatically:
+1. Read this guide (CLAUDE.MD)
+2. Check `.claude/progress/active-instances.md` to see what's available
+3. Choose an appropriate phase/feature to work on
+4. Register itself as the active instance
+5. Continue development from where we left off
+
+### On Every Startup: Instance Coordination
+
+**CRITICAL: Before starting any work, follow this sequence:**
+
+```markdown
+[ ] 1. Read `.claude/progress/active-instances.md`
+       - Check which features are currently active (Last Update < 60 min)
+       - Identify stale instances (Last Update > 60 min ago) - these can be taken over
+       - Identify available features (not currently being worked on)
+
+[ ] 2. Choose what to work on based on priority:
+       - If Phase 1 is incomplete → Work on Phase 1 (single-instance, no conflicts)
+       - If Phase 1 is complete → Choose from available Phase 2 features
+       - If Phase 2 is complete → Choose from available Phase 3 features
+       - If all phases complete → Report status and ask user for direction
+
+[ ] 3. Register yourself in `active-instances.md`:
+       - Add entry with your instance/session ID
+       - Include start timestamp and "Last Update" timestamp
+       - Mark status as "Active"
+
+[ ] 4. During work: Update "Last Update" timestamp every 15-30 minutes
+       - This tells other instances you're still working
+       - Prevents conflicts with parallel instances
+
+[ ] 5. When pausing or completing: Update your entry
+       - If pausing: Change status to "Paused" and update timestamp
+       - If completing: Remove your entry entirely OR mark as "Complete"
+```
+
+### Multi-Instance Coordination Rules
+
+**Why this matters:**
+- Phase 2 has **6 parallel features** (folding, search, richcontent, export, themes, codepreview)
+- Phase 3 has **4 parallel features** (computation, restructure, kanban, github-sync)
+- Multiple Claude instances can work simultaneously on **different** features
+- The `active-instances.md` file prevents two instances from working on the **same** feature
+
+**Key Rules:**
+1. **One instance per feature** - Never work on a feature that's already "Active"
+2. **Check timestamps** - Instances with Last Update > 60 min are considered stale/crashed
+3. **Stale instances can be taken over** - If you find a stale instance, you can take it over
+4. **Update regularly** - Keep your "Last Update" timestamp current (every 15-30 min)
+5. **Clean up when done** - Remove your entry when pausing or completing work
+
+### Example Instance Registration
+
+When you start working on the "folding" feature in Phase 2, add this to `active-instances.md`:
+
+```markdown
+### Folding - Phase 2
+- Instance ID: claude-session-abc123
+- Started: 2026-01-06 10:30 AM
+- Last Update: 2026-01-06 11:45 AM
+- Status: Active
+```
+
+Update the "Last Update" field every 15-30 minutes while working. When done, remove this entry.
+
+---
+
 ## 📋 Claude's Role & Development Principles
 
 ### Your Role
@@ -261,19 +339,27 @@ Continue with [specific task]
 Every time you start working on folded, follow this sequence:
 
 ```markdown
-[ ] 1. Read `.claude/progress/current-state.md`
+[ ] 0. **FIRST: Check instance coordination** (see "How to Use This Guide" above)
+       - Read `.claude/progress/active-instances.md`
+       - Choose an available feature to work on
+       - Register yourself in active-instances.md
+       - This prevents conflicts with parallel instances!
+
+[ ] 1. Read appropriate `current-state.md` for your feature
+       - Phase 1: `.claude/progress/phase1/current-state.md`
+       - Phase 2+: `.claude/progress/phase{N}/{feature}/current-state.md`
        - Understand where we left off
        - Check for blockers
 
-[ ] 2. Read `.claude/progress/session-log.md` (last 2-3 entries)
+[ ] 2. Read `session-log.md` for your feature (last 2-3 entries)
        - Understand recent work
        - See what patterns emerged
 
-[ ] 3. Read `PLAN.md` section for current phase
+[ ] 3. Read `PLAN.md` section for current phase/feature
        - Refresh on the feature specs
        - Review success criteria
 
-[ ] 4. Check `.claude/progress/decisions.md` (recent entries)
+[ ] 4. Check `decisions.md` for your feature (recent entries)
        - Understand key architectural choices
        - Avoid revisiting settled decisions
 
@@ -285,6 +371,7 @@ Every time you start working on folded, follow this sequence:
        - Start with smallest testable unit
        - Test as you go
        - Update progress files regularly
+       - Update active-instances.md timestamp every 15-30 min
 ```
 
 ### Session Ending Checklist
@@ -295,25 +382,30 @@ Every time you start working on folded, follow this sequence:
        - Integration tests if you changed interfaces
        - Update tests-results.md
 
-[ ] 2. Update `current-state.md`
+[ ] 2. Update `current-state.md` for your feature
        - Mark completed tasks
        - Note next steps
        - Document any blockers
 
-[ ] 3. Update `session-log.md`
+[ ] 3. Update `session-log.md` for your feature
        - Summarize what was accomplished
        - Note challenges and solutions
        - Set objectives for next session
 
 [ ] 4. Document decisions (if any)
-       - Add to decisions.md
+       - Add to decisions.md for your feature
        - Include reasoning
 
-[ ] 5. Commit your work
+[ ] 5. Update `.claude/progress/active-instances.md`
+       - If pausing: Change status to "Paused" and update timestamp
+       - If complete: Remove your entry OR mark as "Complete"
+       - This frees up the feature for other instances!
+
+[ ] 6. Commit your work
        - Clear, descriptive commit message
        - Reference progress files in commit body
 
-[ ] 6. Push to branch
+[ ] 7. Push to branch
        - Ensure work is backed up
 ```
 
