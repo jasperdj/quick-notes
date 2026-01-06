@@ -145,6 +145,208 @@ quick-notes/
 - Collapsible tree visualization
 - Batch operations (move sections, merge, split)
 
+### 1.4 Deployment & CI/CD
+
+**GitHub Pages Deployment**
+
+The application will be deployed using GitHub Pages with automated workflows for both production and PR previews.
+
+**Production Deployment Workflow**
+
+`.github/workflows/deploy.yml`:
+```yaml
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+**PR Preview Workflow**
+
+`.github/workflows/pr-preview.yml`:
+```yaml
+name: PR Preview Deployment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+  pages: write
+
+jobs:
+  build-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Create preview directory
+        run: |
+          mkdir -p preview/pr-${{ github.event.pull_request.number }}
+          cp -r * preview/pr-${{ github.event.pull_request.number }}/ 2>/dev/null || true
+
+      - name: Deploy to preview branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./preview
+          publish_branch: gh-pages-preview
+          destination_dir: pr-${{ github.event.pull_request.number }}
+          keep_files: true
+
+      - name: Comment PR with preview link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const previewUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}/pr-${prNumber}/`;
+
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Preview Deployment')
+            );
+
+            const commentBody = `## 🚀 Preview Deployment
+
+            Your changes have been deployed to a preview environment:
+
+            **Preview URL:** ${previewUrl}
+
+            This preview will be updated automatically when you push new commits.
+
+            ---
+            *Last updated: ${new Date().toUTCString()}*
+            `;
+
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody,
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: commentBody,
+              });
+            }
+```
+
+**Cleanup Workflow for Closed PRs**
+
+`.github/workflows/pr-cleanup.yml`:
+```yaml
+name: Cleanup PR Preview
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout preview branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages-preview
+
+      - name: Remove preview directory
+        run: |
+          rm -rf pr-${{ github.event.pull_request.number }}
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .
+          git commit -m "Remove preview for PR #${{ github.event.pull_request.number }}" || echo "Nothing to clean"
+          git push
+```
+
+**Repository Setup Requirements**
+
+1. Enable GitHub Pages in repository settings:
+   - Go to Settings > Pages
+   - Source: Deploy from a branch
+   - Branch: `gh-pages` (will be created automatically)
+   - Path: `/` (root)
+
+2. No additional secrets required - uses built-in `GITHUB_TOKEN`
+
+3. PR previews use a separate branch (`gh-pages-preview`) to avoid conflicts with production deployments
+
+**Features**
+
+- ✅ Automatic production deployment on push to main/master
+- ✅ Individual preview URLs for each PR (e.g., `username.github.io/quick-notes/pr-42/`)
+- ✅ Automatic comment in PR with preview link
+- ✅ Comment updates with each new commit
+- ✅ Automatic cleanup when PR is closed
+- ✅ No build step required (pure static files)
+- ✅ Fast deployment (typically < 2 minutes)
+
+**Alternative: Cloudflare Pages (optional)**
+
+For users who prefer Cloudflare Pages:
+- Connect repository to Cloudflare Pages
+- Build command: (none - static files)
+- Output directory: `/`
+- Automatic PR previews built-in
+- Faster global CDN
+- Higher bandwidth limits
+
 ---
 
 ## 2. Data Model
@@ -318,6 +520,221 @@ class FoldManager {
 - Overlapping folds: Prevent or merge
 - Editing folded content: Auto-expand or edit in-place
 - Moving/deleting folded regions: Update fold boundaries
+
+### 3.5 Header Copy/Paste
+
+**Smart Header Clipboard Operations**
+
+Traditional copy/paste requires manually selecting entire sections. This feature enables one-click copying of headers with all their nested content.
+
+**Behavior**
+
+When the cursor is on a header line:
+- `Cmd/Ctrl + Shift + C`: Copy entire header and all nested content (including sub-headers, their content, and everything until the next same-level or higher-level header)
+- `Cmd/Ctrl + Shift + X`: Cut entire header and all nested content
+- `Cmd/Ctrl + Shift + V`: Paste as structured content (preserves indentation and hierarchy)
+
+**Implementation**
+
+```javascript
+class HeaderClipboard {
+  constructor(editor, parser) {
+    this.editor = editor
+    this.parser = parser
+    this.clipboard = null
+  }
+
+  copyHeader(cursorLine) {
+    const header = this.findHeaderAtLine(cursorLine)
+    if (!header) {
+      // Fallback to normal copy if not on a header
+      document.execCommand('copy')
+      return
+    }
+
+    const { startLine, endLine, level, title } = header
+    const content = this.extractHeaderContent(startLine, endLine)
+
+    // Store in both custom clipboard and system clipboard
+    this.clipboard = {
+      type: 'header',
+      level: level,
+      title: title,
+      content: content,
+      lineCount: endLine - startLine + 1
+    }
+
+    // Copy to system clipboard as plain text
+    this.copyToSystemClipboard(content)
+
+    // Visual feedback
+    this.showCopyFeedback(startLine, endLine)
+  }
+
+  cutHeader(cursorLine) {
+    this.copyHeader(cursorLine)
+    if (this.clipboard && this.clipboard.type === 'header') {
+      const header = this.findHeaderAtLine(cursorLine)
+      this.editor.deleteLines(header.startLine, header.endLine)
+    }
+  }
+
+  pasteHeader(cursorLine) {
+    if (!this.clipboard || this.clipboard.type !== 'header') {
+      // Fallback to normal paste
+      document.execCommand('paste')
+      return
+    }
+
+    // Paste at cursor position
+    const lines = this.clipboard.content.split('\n')
+    this.editor.insertLines(cursorLine, lines)
+
+    // Visual feedback
+    this.showPasteFeedback(cursorLine, cursorLine + lines.length - 1)
+  }
+
+  findHeaderAtLine(lineNumber) {
+    const line = this.editor.getLine(lineNumber)
+    const headerMatch = line.match(/^(#{1,6})\s+(.+)/)
+
+    if (!headerMatch) return null
+
+    const level = headerMatch[1].length
+    const title = headerMatch[2]
+
+    // Find the end of this header's content
+    const endLine = this.findHeaderEnd(lineNumber, level)
+
+    return {
+      startLine: lineNumber,
+      endLine: endLine,
+      level: level,
+      title: title
+    }
+  }
+
+  findHeaderEnd(startLine, headerLevel) {
+    const totalLines = this.editor.getLineCount()
+
+    // Scan forward until we hit a same-level or higher-level header
+    for (let i = startLine + 1; i < totalLines; i++) {
+      const line = this.editor.getLine(i)
+      const nextHeaderMatch = line.match(/^(#{1,6})\s+/)
+
+      if (nextHeaderMatch) {
+        const nextLevel = nextHeaderMatch[1].length
+        if (nextLevel <= headerLevel) {
+          // Found same-level or higher-level header
+          return i - 1
+        }
+      }
+    }
+
+    // No next header found, goes to end of document
+    return totalLines - 1
+  }
+
+  extractHeaderContent(startLine, endLine) {
+    const lines = []
+    for (let i = startLine; i <= endLine; i++) {
+      lines.push(this.editor.getLine(i))
+    }
+    return lines.join('\n')
+  }
+
+  copyToSystemClipboard(text) {
+    // Create temporary textarea for clipboard access
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+  }
+
+  showCopyFeedback(startLine, endLine) {
+    // Briefly highlight the copied region
+    const lineCount = endLine - startLine + 1
+    this.editor.flashLines(startLine, endLine, 'copy-highlight', 300)
+    this.editor.showToast(`Copied header with ${lineCount} lines`)
+  }
+
+  showPasteFeedback(startLine, endLine) {
+    this.editor.flashLines(startLine, endLine, 'paste-highlight', 300)
+    this.editor.showToast(`Pasted header structure`)
+  }
+}
+```
+
+**Usage Examples**
+
+```
+Before (cursor on line 5):
+1  # Project Ideas
+2
+3  Some intro text...
+4
+5  ## Web App Ideas          ← cursor here
+6
+7  ### Todo App
+8  - Feature 1
+9  - Feature 2
+10
+11 ### Notes App
+12 - Feature A
+13 - Feature B
+14
+15 ## Mobile App Ideas
+16 ...
+
+After Cmd/Ctrl + Shift + C (copy):
+→ Lines 5-13 copied to clipboard:
+  "## Web App Ideas
+
+  ### Todo App
+  - Feature 1
+  - Feature 2
+
+  ### Notes App
+  - Feature A
+  - Feature B"
+
+Paste at line 20:
+→ Entire structure inserted, preserving all nested headers
+```
+
+**Smart Detection**
+
+- **Header Level Detection**: Automatically detects header level (# through ######)
+- **Boundary Detection**: Finds the exact end of the header's scope
+- **Nested Headers**: Includes all sub-headers and their content
+- **Indentation Preservation**: Maintains all formatting, lists, and code blocks
+- **Fold-Aware**: Works correctly even when parts of the header are folded
+
+**Edge Cases**
+
+- Cursor not on header: Falls back to standard copy/paste behavior
+- Last header in document: Copies until end of document
+- Empty headers: Copies just the header line
+- Folded content: Includes folded lines in the copy
+- Cut on last header: Leaves cursor at previous line
+
+**Visual Feedback**
+
+- Brief highlight animation on copied region (300ms green tint)
+- Toast notification showing line count: "Copied header with 47 lines"
+- Paste animation showing inserted content (300ms blue tint)
+
+**Benefits**
+
+- No need to carefully select entire sections
+- One keystroke to copy complex nested structures
+- Faster document reorganization
+- Prevents accidental partial copies
+- Works seamlessly with undo/redo
 
 ---
 
@@ -796,6 +1213,307 @@ class CodeBlockRenderer {
 - Isolated execution (iframe sandbox)
 - Multiple preview windows can be open
 - Useful for creating "mini apps" within notes
+- **Debug Console**: Shows `console.log()`, `alert()`, and errors
+
+### 6.5 Mermaid Diagram Rendering
+Support Mermaid diagrams for flowcharts, sequence diagrams, and more:
+
+````markdown
+```mermaid
+graph TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Do Something]
+    B -->|No| D[Do Something Else]
+    C --> E[End]
+    D --> E
+```
+````
+
+**Features:**
+- Toggle between source and rendered view
+- Resizable diagram container
+- Export diagram as SVG/PNG
+- Support all Mermaid diagram types
+
+```javascript
+class MermaidRenderer {
+  constructor() {
+    this.mermaidLoaded = false
+    this.loadMermaid()
+  }
+
+  async loadMermaid() {
+    if (!this.mermaidLoaded) {
+      // Load Mermaid.js library dynamically
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js'
+      script.onload = () => {
+        mermaid.initialize({ startOnLoad: false, theme: 'default' })
+        this.mermaidLoaded = true
+      }
+      document.head.appendChild(script)
+    }
+  }
+
+  renderDiagram(code, containerId) {
+    const container = document.createElement('div')
+    container.className = 'mermaid-container'
+    container.style.cssText = `
+      border: 1px solid var(--border);
+      padding: 1rem;
+      background: var(--bg-secondary);
+      resize: both;
+      overflow: auto;
+      min-width: 300px;
+      min-height: 200px;
+    `
+
+    // Create controls
+    const controls = document.createElement('div')
+    controls.className = 'mermaid-controls'
+    controls.innerHTML = `
+      <button class="toggle-source">⇄ View Source</button>
+      <button class="resize-reset">↺ Reset Size</button>
+      <button class="export-svg">💾 Export SVG</button>
+    `
+
+    // Create diagram element
+    const diagramEl = document.createElement('div')
+    diagramEl.className = 'mermaid-diagram'
+    diagramEl.id = containerId
+
+    // Render with Mermaid
+    try {
+      mermaid.render(containerId, code, (svgCode) => {
+        diagramEl.innerHTML = svgCode
+      })
+    } catch (e) {
+      diagramEl.innerHTML = `<pre style="color: red;">Error rendering diagram:\n${e.message}</pre>`
+    }
+
+    // Source view (hidden by default)
+    const sourceEl = document.createElement('pre')
+    sourceEl.className = 'mermaid-source'
+    sourceEl.style.display = 'none'
+    sourceEl.textContent = code
+
+    container.appendChild(controls)
+    container.appendChild(diagramEl)
+    container.appendChild(sourceEl)
+
+    // Set up toggle
+    controls.querySelector('.toggle-source').onclick = () => {
+      const isShowingSource = sourceEl.style.display !== 'none'
+      diagramEl.style.display = isShowingSource ? 'block' : 'none'
+      sourceEl.style.display = isShowingSource ? 'none' : 'block'
+      controls.querySelector('.toggle-source').textContent =
+        isShowingSource ? '⇄ View Source' : '⇄ View Diagram'
+    }
+
+    // Reset size
+    controls.querySelector('.resize-reset').onclick = () => {
+      container.style.width = 'auto'
+      container.style.height = 'auto'
+    }
+
+    // Export SVG
+    controls.querySelector('.export-svg').onclick = () => {
+      const svg = diagramEl.querySelector('svg')
+      if (svg) {
+        const svgData = new XMLSerializer().serializeToString(svg)
+        const blob = new Blob([svgData], { type: 'image/svg+xml' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'diagram.svg'
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    }
+
+    return container
+  }
+}
+```
+
+**Supported Diagram Types:**
+- Flowcharts (`graph TD`, `graph LR`)
+- Sequence diagrams
+- Class diagrams
+- State diagrams
+- Entity Relationship diagrams
+- Gantt charts
+- Pie charts
+- Git graphs
+
+### 6.6 Interactive Checkboxes
+Support interactive todo lists with clickable checkboxes:
+
+```markdown
+- [ ] Incomplete task
+- [x] Completed task
+- [ ] Another task
+  - [x] Nested completed subtask
+  - [ ] Nested incomplete subtask
+```
+
+**Features:**
+- Click checkbox to toggle completion
+- Persist checkbox state in document content
+- Visual styling for completed items (strikethrough)
+- Progress indicator for nested lists
+
+```javascript
+class CheckboxHandler {
+  renderCheckbox(checked, lineNumber) {
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = checked
+    checkbox.className = 'task-checkbox'
+    checkbox.dataset.line = lineNumber
+
+    checkbox.onclick = (e) => {
+      e.stopPropagation()
+      this.toggleCheckbox(lineNumber, checkbox.checked)
+    }
+
+    return checkbox
+  }
+
+  toggleCheckbox(lineNumber, newState) {
+    // Update document content
+    const line = this.document.lines[lineNumber]
+    if (newState) {
+      // Mark as complete: [ ] → [x]
+      line.text = line.text.replace(/- \[ \]/, '- [x]')
+    } else {
+      // Mark as incomplete: [x] → [ ]
+      line.text = line.text.replace(/- \[x\]/, '- [ ]')
+    }
+
+    // Update visual rendering
+    this.updateLineRendering(lineNumber)
+
+    // Trigger auto-save
+    this.document.save()
+
+    // Update progress indicators if nested
+    this.updateProgressIndicators(lineNumber)
+  }
+
+  parseCheckbox(text) {
+    // Detect checkbox syntax: - [ ] or - [x]
+    const match = text.match(/^(\s*)-\s\[([ x])\]\s(.+)/)
+    if (match) {
+      const [, indent, state, taskText] = match
+      return {
+        isCheckbox: true,
+        checked: state === 'x',
+        indent: indent.length,
+        text: taskText
+      }
+    }
+    return { isCheckbox: false }
+  }
+
+  renderTaskItem(lineData, lineNumber) {
+    const container = document.createElement('div')
+    container.className = 'task-item'
+
+    const checkbox = this.renderCheckbox(lineData.checked, lineNumber)
+    const label = document.createElement('label')
+    label.textContent = lineData.text
+    label.style.paddingLeft = `${lineData.indent * 20}px`
+
+    if (lineData.checked) {
+      label.style.textDecoration = 'line-through'
+      label.style.opacity = '0.6'
+    }
+
+    container.appendChild(checkbox)
+    container.appendChild(label)
+
+    return container
+  }
+
+  updateProgressIndicators(lineNumber) {
+    // Find parent checkbox (if exists)
+    const parentLine = this.findParentCheckbox(lineNumber)
+    if (parentLine !== -1) {
+      // Count completed vs total subtasks
+      const { completed, total } = this.countSubtasks(parentLine)
+
+      // Show progress indicator
+      const progressEl = document.querySelector(`[data-line="${parentLine}"] .progress`)
+      if (progressEl) {
+        progressEl.textContent = `${completed}/${total}`
+
+        // Auto-check parent if all subtasks complete
+        if (completed === total && total > 0) {
+          const parentCheckbox = document.querySelector(`[data-line="${parentLine}"]`)
+          if (parentCheckbox && !parentCheckbox.checked) {
+            parentCheckbox.checked = true
+            this.toggleCheckbox(parentLine, true)
+          }
+        }
+      }
+    }
+  }
+
+  countSubtasks(parentLine) {
+    const parentIndent = this.getIndentLevel(parentLine)
+    let completed = 0
+    let total = 0
+
+    // Scan following lines until we exit the parent's scope
+    for (let i = parentLine + 1; i < this.document.lines.length; i++) {
+      const line = this.document.lines[i]
+      const indent = this.getIndentLevel(i)
+
+      // Exit if we're back at parent level or higher
+      if (indent <= parentIndent) break
+
+      const checkboxData = this.parseCheckbox(line.text)
+      if (checkboxData.isCheckbox && indent === parentIndent + 1) {
+        total++
+        if (checkboxData.checked) completed++
+      }
+    }
+
+    return { completed, total }
+  }
+}
+```
+
+**Visual Styling:**
+```css
+.task-checkbox {
+  margin-right: 0.5rem;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.task-item label {
+  cursor: pointer;
+  flex: 1;
+}
+
+.task-item .progress {
+  margin-left: auto;
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  padding: 0.1rem 0.4rem;
+  background: var(--bg-secondary);
+  border-radius: 3px;
+}
+```
 
 ---
 
@@ -918,70 +1636,440 @@ class ExportManager {
 }
 ```
 
-### 7.2 Import Features
-**Auto-detection:**
-- Detect if file is encrypted (try decryption)
-- Handle both encrypted and plain exports
-- Merge into existing document or create new
+### 7.2 Enhanced Import System
+**Three Import Scenarios:**
+
+1. **Backup & Recover**: Import as new document (preserve original)
+2. **Sync**: Detect previous import and update existing content
+3. **Inject**: Insert content at specific location in current document
+
+**Features:**
+- Auto-detect if content was previously imported (via environment ID)
+- Show clear status messages ("Previous import detected, content will be synced")
+- Allow override from sync to inject mode
+- Flexible insertion point selection
 
 ```javascript
 class ImportManager {
-  async import(file, password = null) {
-    // 1. Read file
+  constructor() {
+    this.importHistory = new Map() // Track imported content
+  }
+
+  async import(file, password = null, mode = 'auto') {
+    // 1. Read and decrypt file
+    const bundle = await this.loadBundle(file, password)
+
+    // 2. Generate environment ID for this import
+    if (!bundle.environmentId) {
+      bundle.environmentId = this.generateEnvironmentId(bundle)
+    }
+
+    // 3. Check if previously imported
+    const previousImport = await this.findPreviousImport(bundle.environmentId)
+
+    // 4. Determine import mode
+    let importMode = mode
+    if (mode === 'auto') {
+      importMode = previousImport ? 'sync' : 'backup'
+    }
+
+    // 5. Show confirmation dialog
+    const confirmation = await this.showImportDialog(bundle, previousImport, importMode)
+    if (!confirmation.proceed) return null
+
+    // 6. Execute import based on mode
+    switch (confirmation.mode) {
+      case 'backup':
+        return await this.importAsBackup(bundle)
+      case 'sync':
+        return await this.importAsSync(bundle, previousImport)
+      case 'inject':
+        return await this.importAsInject(bundle, confirmation.insertionPoint)
+    }
+  }
+
+  async loadBundle(file, password) {
     const data = await file.arrayBuffer()
 
-    // 2. Try to decrypt if password provided
+    // Try to decrypt if password provided
     let decrypted = data
     if (password) {
       try {
         decrypted = await this.decrypt(data, password)
       } catch (e) {
-        throw new Error('Incorrect password or corrupted file')
+        // Try without password (might not be encrypted)
+        try {
+          decrypted = await this.decompress(data)
+        } catch {
+          throw new Error('Incorrect password or corrupted file')
+        }
       }
     }
 
-    // 3. Decompress
+    // Decompress
     const decompressed = await this.decompress(decrypted)
 
-    // 4. Parse JSON
+    // Parse JSON
     const bundle = JSON.parse(decompressed)
 
-    // 5. Validate version
+    // Validate version
     if (bundle.version !== '1.0') {
       throw new Error('Unsupported export version')
     }
 
-    // 6. Import content
-    await this.importContent(bundle)
-
-    return bundle.headerPath
+    return bundle
   }
 
-  async importContent(bundle) {
-    // Create new document or append to existing
+  generateEnvironmentId(bundle) {
+    // Create unique ID based on content + timestamp + machine
+    const contentHash = this.hashContent(bundle.content)
+    const machineId = this.getMachineId() // From browser fingerprint
+    return `${contentHash}-${bundle.exported}-${machineId}`
+  }
+
+  async findPreviousImport(environmentId) {
+    // Search all documents for matching environment ID
+    const allDocs = await db.documents.getAll()
+
+    for (const doc of allDocs) {
+      if (doc.importMetadata?.environmentId === environmentId) {
+        return {
+          documentId: doc.id,
+          headerPath: doc.importMetadata.headerPath,
+          lastSynced: doc.importMetadata.lastSynced,
+          document: doc
+        }
+      }
+    }
+
+    return null
+  }
+
+  async showImportDialog(bundle, previousImport, suggestedMode) {
+    return new Promise((resolve) => {
+      const dialog = document.createElement('div')
+      dialog.className = 'import-dialog modal'
+
+      let statusMessage = ''
+      let defaultMode = suggestedMode
+
+      if (previousImport) {
+        statusMessage = `
+          ⚠️ <strong>Previous import detected</strong><br>
+          Last synced: ${new Date(previousImport.lastSynced).toLocaleString()}<br>
+          Location: ${previousImport.headerPath}<br>
+          <br>
+          <strong>Content will be synced (updated in place)</strong>
+        `
+        defaultMode = 'sync'
+      } else {
+        statusMessage = `
+          ℹ️ <strong>New import</strong><br>
+          This content hasn't been imported before.<br>
+          <br>
+          <strong>Content will be imported as a new document</strong>
+        `
+        defaultMode = 'backup'
+      }
+
+      dialog.innerHTML = `
+        <div class="import-dialog-content">
+          <h2>Import Document</h2>
+
+          <div class="import-status">
+            ${statusMessage}
+          </div>
+
+          <div class="import-mode">
+            <label>Import Mode:</label>
+            <select id="import-mode">
+              <option value="backup" ${defaultMode === 'backup' ? 'selected' : ''}>
+                Backup & Recover (create new document)
+              </option>
+              <option value="sync" ${defaultMode === 'sync' ? 'selected' : ''}
+                      ${!previousImport ? 'disabled' : ''}>
+                Sync (update existing content)
+              </option>
+              <option value="inject">
+                Inject (insert at specific location)
+              </option>
+            </select>
+          </div>
+
+          <div class="import-options" id="inject-options" style="display: none;">
+            <label>Insert at header:</label>
+            <select id="insertion-point">
+              <option value="">-- Select insertion point --</option>
+              ${this.getHeaderOptions()}
+            </select>
+            <div class="help-text">
+              Content from "${bundle.headerPath}" will be inserted as a child of the selected header
+            </div>
+          </div>
+
+          <div class="import-preview">
+            <strong>Preview:</strong><br>
+            • Content: ${bundle.content.split('\n').length} lines<br>
+            • Images: ${bundle.assets?.filter(a => a.type === 'image').length || 0}<br>
+            • Attachments: ${bundle.assets?.filter(a => a.type === 'attachment').length || 0}
+          </div>
+
+          <div class="import-actions">
+            <button id="cancel-import">Cancel</button>
+            <button id="proceed-import" class="primary">Import</button>
+          </div>
+        </div>
+      `
+
+      document.body.appendChild(dialog)
+
+      // Handle mode change
+      const modeSelect = dialog.querySelector('#import-mode')
+      const injectOptions = dialog.querySelector('#inject-options')
+
+      modeSelect.onchange = () => {
+        injectOptions.style.display = modeSelect.value === 'inject' ? 'block' : 'none'
+      }
+
+      // Handle buttons
+      dialog.querySelector('#cancel-import').onclick = () => {
+        dialog.remove()
+        resolve({ proceed: false })
+      }
+
+      dialog.querySelector('#proceed-import').onclick = () => {
+        const mode = modeSelect.value
+        const insertionPoint = dialog.querySelector('#insertion-point')?.value
+
+        if (mode === 'inject' && !insertionPoint) {
+          alert('Please select an insertion point')
+          return
+        }
+
+        dialog.remove()
+        resolve({
+          proceed: true,
+          mode: mode,
+          insertionPoint: insertionPoint
+        })
+      }
+    })
+  }
+
+  async importAsBackup(bundle) {
+    // Create new document (preserve original if exists)
     const doc = {
       id: uuid(),
       title: this.extractTitle(bundle.headerPath),
       content: bundle.content,
       created: Date.now(),
-      modified: Date.now()
+      modified: Date.now(),
+      importMetadata: {
+        environmentId: bundle.environmentId,
+        headerPath: bundle.headerPath,
+        originalExportDate: bundle.exported,
+        lastSynced: Date.now()
+      }
     }
 
     // Import assets
-    for (const asset of bundle.assets) {
-      if (asset.type === 'image') {
-        await db.images.add(asset)
-      } else if (asset.type === 'attachment') {
-        await db.attachments.add(asset)
-      }
-    }
+    await this.importAssets(bundle.assets, doc.id)
 
     // Save document
     await db.documents.add(doc)
 
-    return doc.id
+    return {
+      mode: 'backup',
+      documentId: doc.id,
+      message: 'Document imported successfully as new backup'
+    }
+  }
+
+  async importAsSync(bundle, previousImport) {
+    // Update existing document in place
+    const doc = previousImport.document
+
+    // Update content
+    doc.content = bundle.content
+    doc.modified = Date.now()
+    doc.importMetadata.lastSynced = Date.now()
+
+    // Update assets (replace old ones)
+    await this.updateAssets(bundle.assets, doc.id)
+
+    // Save updated document
+    await db.documents.put(doc)
+
+    return {
+      mode: 'sync',
+      documentId: doc.id,
+      message: `Document synced successfully (last sync: ${new Date().toLocaleString()})`
+    }
+  }
+
+  async importAsInject(bundle, insertionHeaderPath) {
+    // Get current document
+    const currentDoc = await this.getCurrentDocument()
+
+    // Find insertion point
+    const insertionLine = this.findHeaderByPath(currentDoc, insertionHeaderPath)
+
+    if (insertionLine === -1) {
+      throw new Error('Insertion point not found')
+    }
+
+    // Find where to insert (after header's content, before next same-level header)
+    const endOfSection = this.findEndOfSection(currentDoc, insertionLine)
+
+    // Split content and insert
+    const lines = currentDoc.content.split('\n')
+    const newContent = [
+      ...lines.slice(0, endOfSection),
+      '',
+      `<!-- Injected from ${bundle.headerPath} on ${new Date().toLocaleString()} -->`,
+      bundle.content,
+      '',
+      ...lines.slice(endOfSection)
+    ].join('\n')
+
+    // Update document
+    currentDoc.content = newContent
+    currentDoc.modified = Date.now()
+
+    // Import assets
+    await this.importAssets(bundle.assets, currentDoc.id)
+
+    // Save
+    await db.documents.put(currentDoc)
+
+    return {
+      mode: 'inject',
+      documentId: currentDoc.id,
+      insertionPoint: insertionHeaderPath,
+      message: `Content injected at "${insertionHeaderPath}"`
+    }
+  }
+
+  getHeaderOptions() {
+    // Get all headers from current document
+    const currentDoc = this.getCurrentDocumentSync()
+    if (!currentDoc) return '<option>No document open</option>'
+
+    const headers = this.extractHeaders(currentDoc.content)
+    return headers.map(h =>
+      `<option value="${h.path}">${h.path}</option>`
+    ).join('')
+  }
+
+  extractHeaders(content) {
+    const lines = content.split('\n')
+    const headers = []
+    const stack = [{ level: 0, path: '', children: headers }]
+
+    for (let i = 0; i < lines.length; i++) {
+      const match = lines[i].match(/^(#{1,6})\s+(.+)/)
+      if (match) {
+        const level = match[1].length
+        const title = match[2]
+
+        // Find parent
+        while (stack[stack.length - 1].level >= level) {
+          stack.pop()
+        }
+
+        const parent = stack[stack.length - 1]
+        const path = parent.path ? `${parent.path}/${title}` : `/${title}`
+
+        const header = {
+          level: level,
+          title: title,
+          path: path,
+          line: i
+        }
+
+        headers.push(header)
+        stack.push({ level: level, path: path, children: [] })
+      }
+    }
+
+    return headers
   }
 }
+```
+
+### 7.3 Import UI Examples
+
+**Scenario 1: First Import (Backup)**
+```
+┌─────────────────────────────────────────┐
+│ Import Document                         │
+├─────────────────────────────────────────┤
+│                                         │
+│ ℹ️ New import                            │
+│ This content hasn't been imported before│
+│                                         │
+│ Content will be imported as a new       │
+│ document                                │
+│                                         │
+│ Import Mode: [Backup & Recover      ▼] │
+│                                         │
+│ Preview:                                │
+│ • Content: 1,234 lines                  │
+│ • Images: 2                             │
+│ • Attachments: 0                        │
+│                                         │
+│            [Cancel] [Import]            │
+└─────────────────────────────────────────┘
+```
+
+**Scenario 2: Re-import (Sync)**
+```
+┌─────────────────────────────────────────┐
+│ Import Document                         │
+├─────────────────────────────────────────┤
+│                                         │
+│ ⚠️ Previous import detected              │
+│ Last synced: Jan 5, 2026 3:45 PM       │
+│ Location: /Work Notes/Meeting Minutes  │
+│                                         │
+│ Content will be synced (updated in      │
+│ place)                                  │
+│                                         │
+│ Import Mode: [Sync (update)         ▼] │
+│                                         │
+│ Preview:                                │
+│ • Content: 1,267 lines (+33)            │
+│ • Images: 2                             │
+│ • Attachments: 1 (new)                  │
+│                                         │
+│            [Cancel] [Import]            │
+└─────────────────────────────────────────┘
+```
+
+**Scenario 3: Inject**
+```
+┌─────────────────────────────────────────┐
+│ Import Document                         │
+├─────────────────────────────────────────┤
+│                                         │
+│ Import Mode: [Inject (insert)       ▼] │
+│                                         │
+│ Insert at header:                       │
+│ [/Personal Notes/Ideas           ▼]    │
+│   /Personal Notes                       │
+│   /Personal Notes/Todo                  │
+│   /Personal Notes/Ideas                 │
+│   /Work Notes                           │
+│                                         │
+│ ℹ️ Content from "/Project/Features"     │
+│ will be inserted as a child of          │
+│ "/Personal Notes/Ideas"                 │
+│                                         │
+│ Preview:                                │
+│ • Content: 456 lines                    │
+│                                         │
+│            [Cancel] [Import]            │
+└─────────────────────────────────────────┘
 ```
 
 ### 7.3 Export UI
@@ -2241,6 +3329,9 @@ Cmd/Ctrl + Shift + Z  Redo
 Cmd/Ctrl + F          Find (regex supported)
 Cmd/Ctrl + H          Find and replace (regex supported)
 Cmd/Ctrl + K          Insert/edit link
+Cmd/Ctrl + Shift + C  Copy entire header (with all nested content)
+Cmd/Ctrl + Shift + X  Cut entire header (with all nested content)
+Cmd/Ctrl + Shift + V  Paste as structured header (preserves hierarchy)
 
 Folding:
 Cmd/Ctrl + .          Fold selection / smart fold at cursor
@@ -2277,8 +3368,11 @@ Cmd/Ctrl + 0          Reset font size
 - [ ] IndexedDB storage wrapper
 - [ ] Document create/save/load
 - [ ] Auto-save functionality
+- [ ] GitHub Pages deployment workflow
+- [ ] PR preview deployment workflow
+- [ ] PR cleanup automation
 
-**Deliverable**: Can create and edit plain text documents with persistence
+**Deliverable**: Can create and edit plain text documents with persistence, deployed to GitHub Pages with PR previews
 
 ---
 
@@ -2305,8 +3399,10 @@ Cmd/Ctrl + 0          Reset font size
 - [ ] Visual fold indicators
 - [ ] Navigate between folds
 - [ ] Persist fold state
+- [ ] Header copy/paste (Cmd/Ctrl+Shift+C/X/V)
+- [ ] Smart boundary detection for headers
 
-**Deliverable**: Can fold/unfold content at any point
+**Deliverable**: Can fold/unfold content at any point, and quickly copy/paste entire header structures
 
 ---
 
@@ -2349,8 +3445,14 @@ Cmd/Ctrl + 0          Reset font size
 - [ ] Code block syntax highlighting
 - [ ] HTML code block preview (resizable iframe)
 - [ ] Preview window management
+- [ ] Mermaid diagram rendering (dynamic library loading)
+- [ ] Mermaid toggle between source/rendered view
+- [ ] Mermaid diagram resizing and SVG export
+- [ ] Interactive checkboxes for todo tasks (- [ ] / - [x])
+- [ ] Checkbox progress indicators for nested tasks
+- [ ] Auto-completion of parent tasks
 
-**Deliverable**: Can embed and preview rich content within documents
+**Deliverable**: Can embed and preview rich content within documents, including diagrams and interactive task lists
 
 ---
 
@@ -2365,8 +3467,14 @@ Cmd/Ctrl + 0          Reset font size
 - [ ] Encrypted export (discrete)
 - [ ] Header-scoped export
 - [ ] Ctrl+K link insertion
+- [ ] Enhanced import system with three modes:
+  - [ ] Backup & Recover (create new document)
+  - [ ] Sync (detect previous import via environment ID)
+  - [ ] Inject (insert at specific header location)
+- [ ] Environment ID generation for sync detection
+- [ ] Smart import dialog with mode override
 
-**Deliverable**: Advanced document management and navigation
+**Deliverable**: Advanced document management, navigation, and flexible import/export for backup, sync, and content injection scenarios
 
 ---
 
@@ -2703,39 +3811,39 @@ Beyond the initial implementation:
 
 ## 16. Open Questions
 
-Before implementation, clarify:
+Decisions made based on user feedback:
 
 1. **Editor Component**: Textarea + overlay, or custom contenteditable implementation?
-   - Recommendation: Textarea + overlay for simplicity
+   - ✅ **Decision**: Textarea + overlay for simplicity
 
 2. **Fold Visualization**: How should folds appear?
    - Option A: Single line with "... X lines hidden"
    - Option B: Collapsed block with preview
-   - Recommendation: Single line, cleaner
+   - ✅ **Decision**: Single line, cleaner
 
 3. **Multi-document UI**: Tabs vs sidebar vs command palette?
-   - Recommendation: Sidebar for browsing, command palette for quick switch
+   - ✅ **Decision**: Sidebar for browsing, command palette for quick switch
 
 4. **Mobile Support**: Include in Phase 1 or later?
-   - Recommendation: Later, focus on desktop experience first
+   - ✅ **Decision**: Later, focus on desktop experience first
 
 5. **Image Storage Format**: Base64 strings or ArrayBuffer in IndexedDB?
-   - Recommendation: ArrayBuffer for better performance and compression
+   - ✅ **Decision**: ArrayBuffer for better performance and compression
 
 6. **Table Rendering**: Default to text or graphical mode?
-   - Recommendation: Text mode default, toggle to graphical (performance for large tables)
+   - ✅ **Decision**: Text mode default, toggle to graphical (performance for large tables)
 
 7. **Code Preview Sandbox**: How restrictive should iframe sandbox be?
-   - Recommendation: `allow-scripts` but monitor for security concerns
+   - ✅ **Decision**: No restrictions, but add convenient debug window tool to show alerts and console output
 
 8. **Export File Extension**: `.ftx` or something else?
-   - Recommendation: `.ftx` (FoldingText Export) - discrete, no indication of encryption
+   - ✅ **Decision**: `notes.txt` for maximum compatibility and simplicity
 
 9. **Search Default Scope**: Document, current header, or last used?
-   - Recommendation: Remember last used scope per session
+   - ✅ **Decision**: Remember last used scope per session
 
 10. **Theme Naming**: How to avoid conflicts between custom and built-in themes?
-    - Recommendation: Namespace custom themes with "Custom: " prefix
+    - ✅ **Decision**: Namespace custom themes with "Custom: " prefix
 
 ---
 
@@ -2752,10 +3860,13 @@ This plan outlines a complete, feature-rich, performant, serverless markdown edi
 6. **Scope-controlled search**: Regex search/replace within document, header, or nested sections
 7. **Directory-style paths**: Consistent `/Header/Subheader` syntax throughout the app
 8. **Discrete encryption**: Compressed, encrypted exports without obvious UI indicators
-9. **Rich content**: Inline images, attachments, graphical tables, HTML previews
-10. **Custom themes**: Full theme editor with import/export
-11. **Performance-first**: Virtual scrolling, incremental parsing, Web Workers
-12. **Serverless & private**: 100% client-side, no backend required
+9. **Smart import system**: Three modes (Backup, Sync, Inject) with environment ID detection for seamless content synchronization
+10. **Rich content**: Inline images, attachments, graphical tables, HTML previews, Mermaid diagrams
+11. **Interactive elements**: Clickable checkboxes with progress indicators, one-click header copy/paste
+12. **Custom themes**: Full theme editor with import/export
+13. **Performance-first**: Virtual scrolling, incremental parsing, Web Workers
+14. **Serverless & private**: 100% client-side, no backend required
+15. **CI/CD deployment**: Automated GitHub Pages deployment with PR preview environments
 
 **Feature Highlights**:
 - ✓ Plain markdown editing (no WYSIWYG bloat)
@@ -2767,12 +3878,18 @@ This plan outlines a complete, feature-rich, performant, serverless markdown edi
 - ✓ URL navigation with shareable links
 - ✓ Images with resizing, file attachments
 - ✓ Graphical table rendering (togglable)
-- ✓ HTML code preview in sandboxed iframe
+- ✓ HTML code preview in sandboxed iframe with debug console
+- ✓ Mermaid diagram rendering (togglable, resizable, exportable)
+- ✓ Interactive checkboxes with nested task progress indicators
+- ✓ One-click header copy/paste (Cmd/Ctrl+Shift+C/X/V)
+- ✓ Smart import with Backup/Sync/Inject modes
+- ✓ Environment ID detection for cross-device sync
 - ✓ Export/import with compression & encryption
 - ✓ Custom theme creator
 - ✓ Complete keyboard control
 - ✓ IndexedDB storage (offline-first)
 - ✓ Auto-save with crash recovery
+- ✓ GitHub Pages deployment with PR previews
 
 **Technical Architecture**:
 - Vanilla JavaScript (no framework overhead)
@@ -2784,19 +3901,19 @@ This plan outlines a complete, feature-rich, performant, serverless markdown edi
 - Textarea + overlay editor approach
 
 **Implementation Path**:
-- **Phase 1-2**: Core editing + storage (MVP foundation)
-- **Phase 3**: Folding system (key differentiator)
+- **Phase 1-2**: Core editing + storage + GitHub Pages deployment (MVP foundation)
+- **Phase 3**: Folding system + header copy/paste (key differentiators)
 - **Phase 4**: Performance optimization (handle large files)
 - **Phase 5**: UI polish (elegant, minimal design)
-- **Phase 6**: Rich content (images, attachments, tables)
-- **Phase 7**: Search, navigation, export (power features)
+- **Phase 6**: Rich content (images, attachments, tables, Mermaid diagrams, interactive checkboxes)
+- **Phase 7**: Search, navigation, smart import/export (power features with Backup/Sync/Inject modes)
 - **Phase 8**: Themes & customization (personalization)
 - **Phase 9**: Inline computation & restructuring (dynamic features)
 - **Phase 10**: Additional polish & features
 
 **Next Steps**:
-1. Review this comprehensive plan
-2. Clarify open questions (Section 16)
+1. ✅ Review this comprehensive plan
+2. ✅ Clarify open questions (Section 16)
 3. Begin Phase 1 implementation
 4. Iterate based on testing and feedback
 
