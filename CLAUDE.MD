@@ -1,377 +1,1351 @@
-# folded Web - Claude Code Development Guide
+# folded - Development Guide for Claude Code
 
-This guide provides detailed prompting instructions for building folded Web using Claude Code with parallel development instances.
+> **Project**: folded - A browser-based markdown editor with advanced folding capabilities
+> **Architecture**: Vanilla JavaScript, serverless, client-side only
+> **Development Approach**: Incremental, parallel where possible, with continuous validation
 
-## Quick Reference
+---
 
-| Phase | Instances | Duration | Strategy |
-|-------|-----------|----------|----------|
-| 1 | 1 (Serial) | 1-2 weeks | Core foundation |
-| 2 | 6 (Parallel) | 2-4 weeks | Feature modules |
-| 3 | 4 (Parallel) | 2-3 weeks | Advanced features |
-| 4 | 2 (Parallel) | 1-2 weeks | Polish & testing |
+## 🎯 Project Context
+
+**What is folded?**
+A powerful, minimalist markdown editor that runs entirely in your browser. Think of it as a combination of:
+- Obsidian's flexibility
+- FoldingText's folding power
+- Notion's rich content support
+- VSCode's performance with large files
+
+**Core Philosophy:**
+1. **Simplicity first** - Clean, distraction-free interface
+2. **Performance matters** - Handle 100K+ lines smoothly
+3. **Privacy by default** - All data stays client-side (optional GitHub sync)
+4. **Power when needed** - Advanced features don't get in the way
+
+**Key Differentiator:** Fold content at ANY point, not just headers. This makes it perfect for managing large documents, CSV dumps, and complex nested structures.
+
+---
+
+## 📋 Claude's Role & Development Principles
+
+### Your Role
+
+You are the **Implementation Engineer** for folded. Your responsibilities:
+
+1. **Build incrementally** - Small, validated steps compound into robust features
+2. **Document decisions** - Record why you chose specific approaches
+3. **Track progress** - Keep detailed logs of what works and what doesn't
+4. **Test continuously** - Validate after each significant change
+5. **Preserve context** - Maintain state across sessions
+6. **Communicate clearly** - Update progress files regularly
+
+### Development Principles (Compounding Engineering)
+
+**🔨 Build Small, Ship Often**
+- Break every feature into the smallest testable unit
+- Validate each piece before moving to the next
+- Each completed piece compounds into the next
+
+**📝 Document Everything**
+- Every decision has a reason - write it down
+- Every bug has a lesson - record it
+- Every pattern has a purpose - explain it
+
+**🔄 Iterate and Learn**
+- First attempt won't be perfect - that's expected
+- Learn from each iteration
+- Apply learnings to next feature
+
+**🎯 Validate Early, Validate Often**
+- Test each function as you write it
+- Run end-to-end tests after integration
+- Performance test with realistic data
+
+**🧭 Maintain Context**
+- Sessions end, but progress persists
+- Document where you are and where you're going
+- Make it easy to resume
+
+---
+
+## 📊 Progress Tracking System
+
+### Required Progress Files
+
+You MUST maintain these files in `.claude/progress/`:
+
+#### 1. `current-state.md` - Where you are right now
+
+```markdown
+# Current State - [Date]
+
+## Active Phase
+Phase X: [Name]
+
+## Active Instance
+Instance Y: [Feature Name]
+
+## Current Task
+[Specific task being worked on]
+
+## Last Completed
+- [x] Task 1
+- [x] Task 2
+- [x] Task 3
+
+## Next Up
+- [ ] Task 4
+- [ ] Task 5
+
+## Blockers
+[Any issues preventing progress]
+
+## Notes
+[Relevant context for next session]
+```
+
+**Update this file:**
+- At the start of each session (read it first!)
+- After completing each significant task
+- Before ending each session
+- When encountering blockers
+
+#### 2. `decisions.md` - Why you made specific choices
+
+```markdown
+# Decision Log
+
+## [Date] - Decision: [Brief title]
+
+**Context:** What problem were we solving?
+
+**Options Considered:**
+1. Option A - Pros/Cons
+2. Option B - Pros/Cons
+3. Option C - Pros/Cons
+
+**Decision:** We chose [Option X]
+
+**Reasoning:** Why we chose this approach
+
+**Trade-offs:** What we're giving up
+
+**Validation:** How we'll know if this was the right choice
+
+---
+```
+
+**Add entries:**
+- When choosing between architectural approaches
+- When solving a non-trivial problem
+- When making trade-offs (performance vs simplicity, etc.)
+- When deviating from the plan
+
+#### 3. `learnings.md` - What you discovered
+
+```markdown
+# Learnings & Insights
+
+## [Date] - [Topic]
+
+**What I Learned:**
+[The insight or discovery]
+
+**Context:**
+[Where/how this came up]
+
+**Applied To:**
+[Where this knowledge was used]
+
+**Future Application:**
+[Where else this could be useful]
+
+---
+```
+
+**Add entries:**
+- When you discover a better pattern
+- When you solve a tricky bug
+- When you optimize something successfully
+- When you find limitations of an approach
+
+#### 4. `session-log.md` - Daily work summary
+
+```markdown
+# Session Log
+
+## [Date] - Session [N]
+
+**Duration:** [Start time] - [End time]
+
+**Objectives:**
+- [ ] Objective 1
+- [ ] Objective 2
+
+**Completed:**
+- [x] Task 1 - [Brief description]
+- [x] Task 2 - [Brief description]
+
+**In Progress:**
+- [ ] Task 3 - 60% complete
+
+**Challenges:**
+- Challenge 1 and how it was resolved
+- Challenge 2 and current status
+
+**Code Changes:**
+- `file1.js` - Added feature X
+- `file2.css` - Styled component Y
+
+**Tests:**
+- ✅ Unit tests: X passing
+- ✅ Integration tests: Y passing
+- ⚠️ Performance: Needs optimization (noted in backlog)
+
+**Next Session:**
+Continue with [specific task]
+
+---
+```
+
+**Update:**
+- At start of session (read previous entry!)
+- At end of session (summary of work)
+
+#### 5. `tests-results.md` - Validation tracking
+
+```markdown
+# Test Results
+
+## [Date] - [Feature/Module]
+
+### Unit Tests
+- ✅ storage.js - All 12 tests passing
+- ✅ editor.js - 8/8 tests passing
+- ⚠️ parser.js - 7/8 tests passing (1 edge case failing)
+
+### Integration Tests
+- ✅ Create → Edit → Save flow
+- ✅ Fold/unfold with large document
+- ❌ Search in folded sections (bug found, logged)
+
+### Performance Benchmarks
+- ✅ 100K lines: Scroll at 58fps (target: 55fps)
+- ✅ Load time: 380ms (target: 500ms)
+- ⚠️ Parse time: 45ms (target: 30ms, needs optimization)
+
+### Manual Testing
+- ✅ Tested in Chrome 120
+- ✅ Tested in Firefox 121
+- [ ] Safari testing pending
+
+### Bugs Found
+1. Bug: Search doesn't work in folded sections
+   - Severity: Medium
+   - Logged in: issues.md
+   - Status: Investigating
+
+---
+```
+
+**Update:**
+- After running tests
+- After fixing bugs
+- After performance optimizations
+
+---
+
+## 🚀 How to Start Each Session
+
+### Session Startup Checklist
+
+Every time you start working on folded, follow this sequence:
+
+```markdown
+[ ] 1. Read `.claude/progress/current-state.md`
+       - Understand where we left off
+       - Check for blockers
+
+[ ] 2. Read `.claude/progress/session-log.md` (last 2-3 entries)
+       - Understand recent work
+       - See what patterns emerged
+
+[ ] 3. Read `PLAN.md` section for current phase
+       - Refresh on the feature specs
+       - Review success criteria
+
+[ ] 4. Check `.claude/progress/decisions.md` (recent entries)
+       - Understand key architectural choices
+       - Avoid revisiting settled decisions
+
+[ ] 5. Update `current-state.md` with session objectives
+       - What you plan to accomplish
+       - Estimated completion
+
+[ ] 6. Begin work
+       - Start with smallest testable unit
+       - Test as you go
+       - Update progress files regularly
+```
+
+### Session Ending Checklist
+
+```markdown
+[ ] 1. Run all tests
+       - Unit tests for modules you touched
+       - Integration tests if you changed interfaces
+       - Update tests-results.md
+
+[ ] 2. Update `current-state.md`
+       - Mark completed tasks
+       - Note next steps
+       - Document any blockers
+
+[ ] 3. Update `session-log.md`
+       - Summarize what was accomplished
+       - Note challenges and solutions
+       - Set objectives for next session
+
+[ ] 4. Document decisions (if any)
+       - Add to decisions.md
+       - Include reasoning
+
+[ ] 5. Commit your work
+       - Clear, descriptive commit message
+       - Reference progress files in commit body
+
+[ ] 6. Push to branch
+       - Ensure work is backed up
+```
+
+---
+
+## 📖 Development Phases Overview
+
+| Phase | Instances | Duration | Strategy | Progress File |
+|-------|-----------|----------|----------|---------------|
+| 1 | 1 (Serial) | 1-2 weeks | Core foundation | `.claude/progress/phase1.md` |
+| 2 | 6 (Parallel) | 2-4 weeks | Feature modules | `.claude/progress/phase2-instanceN.md` |
+| 3 | 4 (Parallel) | 2-3 weeks | Advanced features | `.claude/progress/phase3-instanceN.md` |
+| 4 | 2 (Parallel) | 1-2 weeks | Polish & testing | `.claude/progress/phase4.md` |
 
 ---
 
 ## Phase 1: Serial Foundation (Single Instance)
 
+**Goal:** Build the core infrastructure that all features depend on.
+
+**Progress File:** `.claude/progress/phase1.md`
+
+### Before You Start
+
+**Read these documents in order:**
+1. `PLAN.md` - Sections 1-4 (Architecture, UI/UX, Folding, Search)
+2. This guide - Understand the development principles
+3. `.claude/progress/current-state.md` - See where we are
+
+**Create initial progress file:**
+
+```bash
+mkdir -p .claude/progress
+cat > .claude/progress/current-state.md << 'EOF'
+# Current State
+
+## Active Phase
+Phase 1: Core Foundation
+
+## Active Instance
+Instance 1: Foundation (single instance)
+
+## Current Task
+Setting up project structure
+
+## Last Completed
+None (starting fresh)
+
+## Next Up
+- [ ] Create project structure
+- [ ] Implement IndexedDB wrapper
+- [ ] Build basic editor
+- [ ] Create document model
+- [ ] Implement parser
+- [ ] Build renderer
+
+## Blockers
+None
+
+## Notes
+Starting Phase 1. Focus on getting basic editing + persistence working before adding features.
+EOF
+```
+
 ### Context Setup
 
-**Before starting, provide to Claude:**
+**Provide this prompt to Claude:**
+
 ```
-I'm building folded Web, a browser-based markdown editor with advanced folding capabilities.
-Please read PLAN.md to understand the full feature set and architecture.
+I'm building folded, a browser-based markdown editor with advanced folding capabilities.
 
-We're starting with Phase 1: Core Foundation. This phase builds the essential infrastructure
-that all other features will depend on. Work on this sequentially, not in parallel.
+PROJECT CONTEXT:
+- Read PLAN.md for full feature specifications
+- Read CLAUDE.MD for development guidelines and progress tracking requirements
+- Read .claude/progress/current-state.md to see where we are
 
-Focus on: Basic editor, storage, parsing, and rendering infrastructure.
-Files to create: index.html, js/main.js, js/modules/storage.js, js/modules/editor.js,
-js/modules/parser.js, js/modules/renderer.js
+DEVELOPMENT PRINCIPLES:
+1. Build incrementally - Test each piece before moving forward
+2. Document decisions in .claude/progress/decisions.md
+3. Update .claude/progress/current-state.md as you work
+4. Track learnings in .claude/progress/learnings.md
+5. Maintain session-log.md for continuity
+
+CURRENT TASK:
+Phase 1: Core Foundation
+
+This phase builds the essential infrastructure:
+- Basic editor (textarea-based)
+- IndexedDB storage
+- Document model
+- Markdown parser
+- Renderer with syntax highlighting
+
+Work sequentially. Test each component thoroughly before integrating.
+
+START BY:
+1. Reading current-state.md
+2. Creating project structure
+3. Implementing storage layer first (tests before integration)
+
+FILES TO CREATE:
+- index.html
+- js/main.js
+- js/modules/storage.js
+- js/modules/editor.js
+- js/modules/parser.js
+- js/modules/renderer.js
+- js/modules/document.js
+
+REMEMBER:
+- Update progress files as you work
+- Document architectural decisions
+- Test continuously
+- Keep it simple - no premature optimization
 ```
 
 ### Week 1: Basic Architecture
 
-**Initial Prompt:**
-```
-Phase 1, Week 1: Basic Architecture
+**Objective:** Get data persisting and basic editing working.
 
-Create the project foundation:
+#### Day 1-2: Project Structure & Storage
 
-1. Set up project structure:
-   - index.html with editor container
-   - js/main.js for initialization
-   - js/modules/ directory for all modules
-   - css/ directory for styles
-   - tests/ directory for unit tests
-
-2. Implement IndexedDB storage wrapper (js/modules/storage.js):
-   - Database initialization
-   - Document CRUD operations
-   - Settings storage
-   - Transaction handling
-   - Error recovery
-
-3. Implement basic editor (js/modules/editor.js):
-   - Textarea-based implementation
-   - Line get/set/insert/delete methods
-   - Cursor position tracking
-   - Selection change events
-   - Auto-save every 2 seconds
-
-4. Implement document model (js/modules/document.js):
-   - Document data structure
-   - Create/load/save/delete operations
-   - Document switching
-   - Auto-save integration
-
-Follow the specifications in PLAN.md sections 2-4.
-Test each component as you build it.
-```
-
-**Success Criteria:**
-- Can create and save documents to IndexedDB
-- Textarea editor responds to input
-- Auto-save triggers every 2 seconds
-- No console errors
-
-### Week 2: Parsing & Rendering
+**Task:** Set up the foundation
 
 **Prompt:**
 ```
-Phase 1, Week 2: Parsing & Rendering
+Phase 1, Week 1, Days 1-2: Project Setup & Storage Layer
 
-Build the markdown parsing and rendering system:
+OBJECTIVE: Create project structure and implement reliable data persistence.
 
-1. Implement markdown parser (js/modules/parser.js):
-   - Line-based tokenization
-   - Detect headers (# through ######)
-   - Detect lists (ordered, unordered, checkboxes)
-   - Detect code blocks (``` fenced)
-   - Detect blockquotes
-   - Incremental parsing (re-parse only changed lines)
-   - Build document structure tree
+TASKS:
 
-2. Implement renderer (js/modules/renderer.js):
-   - Syntax highlighting overlay (div positioned over textarea)
-   - Virtual scrolling for large documents
-   - Line rendering with correct syntax classes
-   - Scroll synchronization between textarea and overlay
-   - Efficient re-rendering on edits
+1. Project Structure:
+   - Create index.html with minimal editor UI
+   - Set up js/modules/ directory
+   - Create css/ directory with main.css
+   - Set up tests/ directory
+   - Initialize git (if not already done)
 
-3. Integration:
-   - Connect all modules: storage ← document ← editor → parser → renderer
-   - Test end-to-end: type text → parse → highlight → save
-   - Create module interface documentation
-   - Fix any integration bugs
+2. IndexedDB Storage (js/modules/storage.js):
 
-Reference PLAN.md sections 2.2 (Parsing), 3 (Folding structure), and 5.4 (Syntax highlighting).
+   Implement class with methods:
+   - initDB() - Create 'folded' database with 'documents' and 'settings' stores
+   - saveDocument(id, content, metadata) - Store document
+   - loadDocument(id) - Retrieve document
+   - deleteDocument(id) - Remove document
+   - listDocuments() - Get all document IDs
+   - saveSetting(key, value) - Store setting
+   - loadSetting(key) - Retrieve setting
+
+   Requirements:
+   - Use async/await throughout
+   - Handle errors gracefully (log and return defaults)
+   - Support transactions
+   - Add migration support for future schema changes
+
+3. Testing:
+   - Write unit tests for each storage method
+   - Test error conditions (database locked, storage full)
+   - Test with large documents (100KB+)
+
+4. Progress Tracking:
+   - Update current-state.md after each major task
+   - Document decision: Why IndexedDB over localStorage?
+   - Log any challenges in session-log.md
+
+VALIDATION:
+- [ ] Can store and retrieve document
+- [ ] Handles errors without crashing
+- [ ] Tests pass (at least 10 tests)
+- [ ] No console errors
+
+REFERENCE: PLAN.md section 1.2 (File Structure), 1.3 (Data Model)
+
+After completing, update current-state.md and commit with message:
+"feat(storage): implement IndexedDB wrapper with CRUD operations"
 ```
 
-**Success Criteria:**
-- Markdown syntax is highlighted in real-time
-- Can scroll smoothly through 10,000+ line document
-- Parser correctly identifies all markdown elements
-- Changes are saved and restored correctly
+**Expected Decision Log Entry:**
+
+```markdown
+## [Date] - Decision: IndexedDB vs localStorage
+
+**Context:** Need to choose persistent storage mechanism for documents.
+
+**Options Considered:**
+1. localStorage - Simple API, 5-10MB limit, synchronous
+2. IndexedDB - Complex API, hundreds of MB, asynchronous
+3. File System Access API - Best performance, limited browser support
+
+**Decision:** IndexedDB
+
+**Reasoning:**
+- Need to support large documents (CSV dumps, etc.)
+- localStorage 5MB limit too restrictive
+- Async API won't block UI during saves
+- Wide browser support
+- Supports transactions and migrations
+
+**Trade-offs:**
+- More complex API than localStorage
+- Requires async/await throughout
+- Need to handle database versioning
+
+**Validation:**
+- Successfully store/retrieve 100KB document
+- No UI blocking during save
+- Tests pass for error conditions
+```
+
+#### Day 3-4: Basic Editor
+
+**Task:** Create the editor component
+
+**Prompt:**
+```
+Phase 1, Week 1, Days 3-4: Basic Editor
+
+OBJECTIVE: Build a functional text editor with line-based operations.
+
+TASKS:
+
+1. Editor Module (js/modules/editor.js):
+
+   Implement class with methods:
+   - initialize(container) - Set up textarea and event listeners
+   - getLine(lineNumber) - Get specific line content
+   - setLine(lineNumber, content) - Update line
+   - insertLine(lineNumber, content) - Insert new line
+   - deleteLine(lineNumber) - Remove line
+   - getLines() - Get all lines as array
+   - setLines(lines) - Replace all content
+   - getCursor() - Get cursor position {line, col}
+   - setCursor(line, col) - Set cursor position
+   - getSelection() - Get selected text
+
+   Event handling:
+   - onInput() - Trigger on text change
+   - onSelectionChange() - Trigger on cursor movement
+   - onChange(callback) - Register change listener
+
+2. Auto-save Integration:
+   - Debounce saves (2 seconds after last edit)
+   - Show save indicator (saving... → saved ✓)
+   - Handle save failures gracefully
+
+3. Testing:
+   - Test all line operations
+   - Test cursor positioning
+   - Test selection handling
+   - Test auto-save debouncing
+
+4. Progress Tracking:
+   - Update current-state.md
+   - Document decisions about line-based API
+   - Log performance observations
+
+VALIDATION:
+- [ ] Can type and see text appear
+- [ ] Line operations work correctly
+- [ ] Auto-save triggers after 2 seconds
+- [ ] Cursor positioning accurate
+- [ ] Tests pass (at least 15 tests)
+
+REFERENCE: PLAN.md section 2.1 (Editor Component)
+
+Remember: Keep it simple. No fancy features yet. Just reliable line-based editing.
+```
+
+**Expected Learning Entry:**
+
+```markdown
+## [Date] - Line-based API Design
+
+**What I Learned:**
+Using a line-based API (getLine, setLine) makes it much easier to integrate with the parser and folding system later. While character-based APIs are more flexible, line-based operations align with markdown structure.
+
+**Context:**
+While implementing the editor, I chose to expose line-based operations rather than character-based ones. This was validated when integrating with the parser (which operates on lines).
+
+**Applied To:**
+- Editor.js line operations
+- Parser.js incremental parsing
+- Renderer.js line-by-line highlighting
+
+**Future Application:**
+Folding will benefit from this - we can fold by line ranges. Variable computation can track which lines have variables. Search can operate line-by-line for better performance.
+```
+
+#### Day 5-7: Document Model & Integration
+
+**Task:** Connect editor to storage with document abstraction
+
+**Prompt:**
+```
+Phase 1, Week 1, Days 5-7: Document Model
+
+OBJECTIVE: Create document abstraction and connect all pieces.
+
+TASKS:
+
+1. Document Module (js/modules/document.js):
+
+   Implement class with methods:
+   - create(name) - Create new document
+   - load(id) - Load existing document
+   - save() - Save current document
+   - delete(id) - Delete document
+   - getMetadata() - Get doc info (created, modified, etc.)
+   - setContent(text) - Update content
+   - getContent() - Get all text
+
+   Auto-save integration:
+   - Listen to editor changes
+   - Debounce saves
+   - Track dirty state
+   - Handle conflicts
+
+2. Main App (js/main.js):
+   - Initialize storage
+   - Create editor instance
+   - Load last opened document OR create new
+   - Set up auto-save
+   - Handle page unload (save before exit)
+
+3. Integration Testing:
+   - Create → Edit → Save → Load cycle
+   - Test with large document
+   - Test rapid edits (debounce working?)
+   - Test page refresh (data persists?)
+
+4. Progress Tracking:
+   - Update current-state.md (mark Week 1 complete!)
+   - Document integration challenges
+   - Update session-log.md with weekly summary
+
+VALIDATION:
+- [ ] Can create new document
+- [ ] Can edit and see auto-save work
+- [ ] Can refresh page and see document persist
+- [ ] Can create multiple documents
+- [ ] No data loss under any condition
+- [ ] Tests pass (at least 20 total now)
+
+REFERENCE: PLAN.md section 1.3 (Data Model)
+
+After completing, you should be able to:
+- Open the app
+- Type some text
+- See "Saving..." indicator
+- Refresh the page
+- See your text still there
+
+This is your MVP foundation! Document it in session-log.md.
+```
+
+### Week 2: Parsing & Rendering
+
+**Objective:** Add markdown parsing and syntax highlighting
+
+#### Day 8-10: Markdown Parser
+
+**Prompt:**
+```
+Phase 1, Week 2, Days 8-10: Markdown Parser
+
+OBJECTIVE: Build incremental markdown parser for syntax highlighting and structure.
+
+TASKS:
+
+1. Parser Module (js/modules/parser.js):
+
+   Implement class with methods:
+   - parse(document) - Parse entire document
+   - parseLine(line, lineNumber) - Parse single line
+   - getHeaderTree() - Get hierarchical header structure
+   - getHeaderPath(lineNumber) - Get path to header (e.g., "/Budget/Q1")
+   - invalidateRange(start, end) - Mark lines for re-parse
+
+   Detect:
+   - Headers: # through ######
+   - Lists: -, *, 1., a.
+   - Checkboxes: - [ ] and - [x]
+   - Code blocks: ``` fenced
+   - Blockquotes: >
+   - Bold: **text**
+   - Italic: *text*
+   - Code: `code`
+   - Links: [text](url)
+
+2. Incremental Parsing:
+   - Only re-parse changed lines
+   - Update header tree incrementally
+   - Track dependencies (e.g., code block start affects later lines)
+
+3. Performance:
+   - Parse 10,000 lines in <50ms
+   - Use caching where possible
+   - Profile and optimize
+
+4. Testing:
+   - Test each markdown element type
+   - Test header hierarchy building
+   - Test incremental updates
+   - Test edge cases (unclosed code blocks, etc.)
+
+5. Progress Tracking:
+   - Update current-state.md
+   - Document parsing approach
+   - Log performance metrics
+
+VALIDATION:
+- [ ] Correctly identifies all markdown elements
+- [ ] Builds accurate header tree
+- [ ] Incremental parsing works
+- [ ] Performance target met (10K lines < 50ms)
+- [ ] Tests pass (at least 30 tests now)
+
+REFERENCE: PLAN.md section 2.2 (Markdown Parsing)
+
+Key insight: Line-based parsing is fast. Don't try to be too clever.
+Simple regex patterns are fine for markdown detection.
+```
+
+**Expected Performance Learning:**
+
+```markdown
+## [Date] - Parser Performance Optimization
+
+**What I Learned:**
+Simple regex patterns on individual lines is ~10x faster than trying to parse the entire document as one string. For 10,000 lines:
+- String-based parsing: 450ms
+- Line-based parsing: 42ms
+
+**Context:**
+Initially tried to parse document as single string. Performance was poor. Switched to line-by-line with incremental updates. Massive improvement.
+
+**Applied To:**
+- Parser.js uses line-based approach
+- Only re-parses changed lines
+- Caches results per line
+
+**Future Application:**
+Renderer should also work line-by-line. Virtual scrolling will benefit from this architecture.
+```
+
+#### Day 11-14: Renderer & Syntax Highlighting
+
+**Prompt:**
+```
+Phase 1, Week 2, Days 11-14: Renderer & Syntax Highlighting
+
+OBJECTIVE: Create renderer that highlights syntax without blocking the editor.
+
+TASKS:
+
+1. Renderer Module (js/modules/renderer.js):
+
+   Implement class with methods:
+   - initialize(editor, parser) - Set up overlay div
+   - render() - Render all visible lines
+   - updateLine(lineNumber) - Re-render single line
+   - updateRange(start, end) - Re-render range
+   - scrollToLine(lineNumber) - Scroll to specific line
+
+   Virtual Scrolling:
+   - Only render visible lines + buffer
+   - Reuse DOM elements
+   - Update on scroll
+   - Sync with textarea scroll position
+
+2. Syntax Highlighting:
+   - Apply CSS classes based on parser tokens
+   - Style headers, lists, code, bold, italic, etc.
+   - Keep it subtle - not distracting
+
+3. Overlay Synchronization:
+   - Position overlay div exactly over textarea
+   - Match font, line-height, padding
+   - Keep scroll in sync
+   - Handle window resize
+
+4. Performance:
+   - Maintain 60fps scrolling
+   - Debounce expensive operations
+   - Profile and optimize
+
+5. Testing:
+   - Test virtual scrolling with 100K lines
+   - Test scroll synchronization
+   - Test syntax highlighting accuracy
+   - Measure FPS during scroll
+
+6. Progress Tracking:
+   - Update current-state.md (Phase 1 complete!)
+   - Document rendering architecture
+   - Log performance metrics in tests-results.md
+
+VALIDATION:
+- [ ] Syntax highlighting appears in real-time
+- [ ] Can scroll smoothly through 100K lines
+- [ ] FPS > 55 during scroll
+- [ ] Overlay stays in sync with textarea
+- [ ] Tests pass (at least 40 tests total)
+
+REFERENCE: PLAN.md section 5.4 (Syntax Highlighting), 12.1 (Virtual Scrolling)
+
+After this, you'll have a working markdown editor with:
+- Persistence ✓
+- Syntax highlighting ✓
+- Performance ✓
+
+Document this milestone in session-log.md!
+```
+
+### Phase 1 Completion Checklist
+
+Before moving to Phase 2, verify:
+
+```markdown
+## Phase 1 Completion Checklist
+
+### Functionality
+- [ ] Can create new documents
+- [ ] Can edit text smoothly
+- [ ] Auto-save works (2 second debounce)
+- [ ] Syntax highlighting appears in real-time
+- [ ] Can handle 100K+ line documents
+- [ ] Data persists across page refreshes
+
+### Code Quality
+- [ ] All modules tested (40+ tests passing)
+- [ ] No console errors
+- [ ] Code is clean and commented
+- [ ] Interfaces documented
+
+### Performance
+- [ ] Scroll at 55+ fps with 100K lines
+- [ ] Parse 10K lines in < 50ms
+- [ ] Load time < 500ms
+- [ ] No memory leaks
+
+### Documentation
+- [ ] current-state.md updated
+- [ ] session-log.md has all sessions
+- [ ] decisions.md has key choices
+- [ ] learnings.md has insights
+- [ ] tests-results.md has metrics
+
+### Ready for Phase 2?
+If all above are checked, create Phase 2 planning document:
+
+`.claude/progress/phase2-planning.md` with:
+- Which 6 instances to run in parallel
+- Dependencies between instances
+- Integration strategy
+- Timeline estimate
+
+Then update current-state.md:
+```
+## Active Phase
+Phase 2: Parallel Feature Development
+
+## Active Instance
+Planning for 6 parallel instances
+
+## Current Task
+Creating phase2-instanceN.md files for coordination
+```
+```
 
 ---
 
 ## Phase 2: Parallel Feature Tracks (6 Instances)
 
-**Prerequisites:** Phase 1 must be complete and stable.
+**Goal:** Build independent feature modules on top of stable foundation.
 
-**General Setup for All Instances:**
+**Prerequisites:** Phase 1 MUST be complete and stable.
+
+### Multi-Instance Coordination
+
+When running multiple Claude instances in parallel, coordination is critical.
+
+#### Setup: Create Coordination Files
+
+Before starting parallel work:
+
+```bash
+# Create instance-specific progress files
+mkdir -p .claude/progress/phase2
+
+for i in {1..6}; do
+  cat > .claude/progress/phase2/instance$i.md << EOF
+# Instance $i Progress
+
+## Feature
+[Will be filled based on assignment]
+
+## Status
+Not Started
+
+## Files
+[List of files this instance owns]
+
+## Dependencies
+[Other instances/modules this depends on]
+
+## Current Task
+None
+
+## Completed
+[]
+
+## Next Up
+[]
+
+## Blockers
+[]
+
+## Notes
+[]
+EOF
+done
+
+# Create shared coordination file
+cat > .claude/progress/phase2/coordination.md << 'EOF'
+# Phase 2 Coordination
+
+## Daily Standup - [Date]
+
+### Instance 1: [Feature]
+- Status: [In Progress / Blocked / Complete]
+- Progress: [X%]
+- Blockers: [None / List]
+
+### Instance 2: [Feature]
+...
+
+### Instance 3: [Feature]
+...
+
+### Instance 4: [Feature]
+...
+
+### Instance 5: [Feature]
+...
+
+### Instance 6: [Feature]
+...
+
+## Integration Issues
+[Any conflicts or coordination needed]
+
+## Shared Interface Changes
+[Any changes to core modules that affect multiple instances]
+
+## Next Steps
+[What needs to happen to keep moving forward]
+EOF
 ```
-We're now in Phase 2: Parallel Feature Development. The core foundation is complete.
-You're working on Instance X: [FEATURE NAME].
 
-IMPORTANT:
-- Work ONLY on the files assigned to this instance
-- Do NOT modify core files (editor.js, parser.js, renderer.js, storage.js, document.js)
-- Use the documented interfaces from Phase 1
-- Create your feature branch: git checkout -b feature/[feature-name]
-- Write unit tests for your module
-- Document any new interfaces you create
+### General Setup for All Parallel Instances
 
-Core interfaces available to you:
-- Editor: getLine(), setLine(), insertLine(), deleteLine(), getCursor(), setCursor()
-- Parser: parse(document), getHeaderTree(), getHeaderPath()
-- Storage: save(), load(), getSetting(), setSetting()
-- Renderer: updateLine(), updateRange(), scrollToLine()
+**Before ANY instance starts work:**
+
+```
+IMPORTANT: You are working on Instance X in a parallel development environment.
+
+RULES:
+1. Read .claude/progress/phase2/instanceX.md FIRST
+2. Read .claude/progress/phase2/coordination.md for context
+3. Work ONLY on files assigned to your instance
+4. Do NOT modify core files (editor.js, parser.js, renderer.js, storage.js)
+5. Update your instance progress file after each significant task
+6. Update coordination.md daily
+7. Document any interface changes that affect other instances
+
+CORE INTERFACES (read-only for you):
+- Editor: getLine(), setLine(), getCursor(), onChange()
+- Parser: parse(), getHeaderTree(), getHeaderPath()
+- Storage: saveDocument(), loadDocument(), saveSetting(), loadSetting()
+- Renderer: updateLine(), scrollToLine()
+
+YOUR INSTANCE:
+Instance X: [Feature Name]
+Branch: feature/[feature-name]
+Files: [List of files you own]
+
+PROGRESS TRACKING:
+- Update .claude/progress/phase2/instanceX.md continuously
+- Document decisions in .claude/progress/decisions.md
+- Log learnings in .claude/progress/learnings.md
+- Update coordination.md daily with status
+
+START BY:
+1. Reading your instance progress file
+2. Reading coordination.md
+3. Creating your feature branch
+4. Setting up tests
+5. Building smallest testable unit first
 ```
 
 ### Instance 1: Folding System
 
 **Branch:** `feature/folding`
+**Progress File:** `.claude/progress/phase2/instance1.md`
 **Files:** `js/modules/folding.js`, `css/folding.css`, `tests/folding.test.js`
 
 **Prompt:**
 ```
 Instance 1: Folding System
 
-Implement the core folding feature:
+CONTEXT:
+You are building the CORE feature of folded - the ability to fold content at ANY point.
+This is what differentiates us from other editors.
 
-1. Fold Data Structure (js/modules/folding.js):
-   class FoldManager {
-     folds: Array<{startLine, endLine, collapsed, type}>
-     createFold(startLine, endLine)
-     toggleFold(lineNumber)
-     getFoldsInRange(start, end)
-     persistFolds()
-     loadFolds()
-   }
+Read:
+- PLAN.md section 3 (Folding System)
+- .claude/progress/phase2/instance1.md
+- .claude/progress/phase2/coordination.md
 
-2. Fold UI Features:
-   - Visual fold indicators (▼ expanded, ▶ collapsed)
-   - Click to toggle fold
-   - Selection-based folding (Cmd+.)
-   - Smart fold detection (auto-detect foldable regions)
-   - Navigate between folds (Alt+Up/Down)
+YOUR RESPONSIBILITIES:
 
-3. Header Copy/Paste:
+1. Fold Data Structure:
+   - Track fold regions (startLine, endLine, collapsed state)
+   - Persist fold state to IndexedDB
+   - Load fold state on document load
+
+2. Fold UI:
+   - Visual indicators (▼ expanded, ▶ collapsed)
+   - Click handlers to toggle
+   - Keyboard shortcuts (Cmd+. to fold, Cmd+, to unfold)
+
+3. Smart Folding:
+   - Auto-detect foldable regions (headers, code blocks, lists)
+   - Selection-based folding (fold whatever is selected)
+
+4. Header Copy/Paste:
    - Cmd+Shift+C: Copy entire header with content
    - Cmd+Shift+X: Cut entire header
    - Cmd+Shift+V: Paste header structure
-   - Smart boundary detection
+   - Smart boundary detection using parser
 
-4. Integration:
-   - Listen to parser.getHeaderTree() for fold points
-   - Update renderer to hide folded lines
-   - Persist fold state to storage
+5. Integration:
+   - Hook into renderer to hide folded lines
+   - Update on document changes
+   - Preserve folds during edits
 
-Reference PLAN.md section 3 (Folding System).
-Write comprehensive tests for fold creation, toggle, and persistence.
+DEVELOPMENT APPROACH:
+Day 1: Data structure + persistence (test thoroughly)
+Day 2: Basic fold/unfold (test with simple cases)
+Day 3: UI indicators + click handling
+Day 4: Smart fold detection
+Day 5: Header copy/paste
+Day 6-7: Integration + edge cases
+
+VALIDATION:
+- [ ] Can fold any selection
+- [ ] Can fold headers automatically
+- [ ] Folds persist across sessions
+- [ ] Folded content is truly hidden
+- [ ] Header copy/paste works
+- [ ] No bugs with nested folds
+- [ ] 20+ tests passing
+
+UPDATE PROGRESS:
+- Update instance1.md after each day
+- Document fold persistence approach in decisions.md
+- Log any clever patterns in learnings.md
+- Update coordination.md daily
+
+START: Create basic fold data structure and write tests for it.
 ```
-
-**Success Criteria:**
-- Can fold/unfold any section
-- Fold state persists across sessions
-- Header copy/paste works correctly
-- No conflicts with editor scrolling
 
 ### Instance 2: Search & Navigation
 
 **Branch:** `feature/search`
+**Progress File:** `.claude/progress/phase2/instance2.md`
 **Files:** `js/modules/search.js`, `js/modules/navigation.js`, `css/search.css`, `tests/search.test.js`
 
 **Prompt:**
 ```
 Instance 2: Search & Navigation
 
-Implement search and URL-based navigation:
+CONTEXT:
+Build powerful search with regex support and URL-based navigation.
 
-1. Search Engine (js/modules/search.js):
-   class SearchEngine {
-     search(query, options)
-     replace(query, replacement, scope)
-     getScopeLines(scope)  // 'document', 'header', 'nested'
-     highlightResults()
-   }
+Read:
+- PLAN.md section 4 (Search & Navigation)
+- .claude/progress/phase2/instance2.md
+- .claude/progress/phase2/coordination.md
+
+YOUR RESPONSIBILITIES:
+
+1. Search Engine:
+   - Regex search across document
+   - Scope control (entire doc / current header / nested)
+   - Find and replace
+   - Case sensitive/insensitive
+   - Whole word matching
 
 2. Search UI:
    - Modal search dialog (Cmd+F)
-   - Regex support with validation
-   - Scope selector: Document / Current Header / Nested Headers
    - Replace mode (Cmd+H)
    - Result navigation (Enter/Shift+Enter)
+   - Result count
+   - Highlight all matches
 
-3. URL Navigation (js/modules/navigation.js):
-   - Directory-style header paths: #/budget/q1/expenses
-   - Focus on header when URL hash changes
+3. URL Navigation:
+   - Convert header paths to URLs (#/budget/q1)
+   - Focus header when URL changes
    - Update URL when user clicks header
-   - Browser back/forward integration
-   - Scroll to focused header
+   - Browser back/forward support
+   - Deep linking
 
 4. Integration:
    - Use parser.getHeaderPath() for navigation
-   - Highlight search results in renderer
-   - Update fold state when navigating to collapsed header
+   - Coordinate with Instance 1 (skip folded content or not?)
+   - Highlight matches in renderer
 
-Reference PLAN.md section 4 (Search & Navigation).
+DEVELOPMENT APPROACH:
+Day 1: Search engine (regex + scopes)
+Day 2: Search UI modal
+Day 3: Result highlighting + navigation
+Day 4: Find & replace
+Day 5: URL navigation system
+Day 6-7: Integration + edge cases
+
+VALIDATION:
+- [ ] Regex search works
+- [ ] Scope limiting works
+- [ ] Find & replace works
+- [ ] URL navigation works
+- [ ] Browser back/forward works
+- [ ] 20+ tests passing
+
+COORDINATION:
+With Instance 1 (Folding): Decide whether search should:
+- Skip folded content (my recommendation)
+- OR search inside folds but keep them collapsed
+
+Document this decision in coordination.md and decisions.md
+
+UPDATE PROGRESS:
+- Update instance2.md daily
+- Document search algorithm choices
+- Update coordination.md with dependencies
+
+START: Build search engine with regex support and scope filtering.
 ```
-
-**Success Criteria:**
-- Regex search works across scopes
-- URL navigation focuses correct header
-- Browser back/forward works
-- Search highlights visible in editor
 
 ### Instance 3: Rich Content
 
 **Branch:** `feature/richcontent`
+**Progress File:** `.claude/progress/phase2/instance3.md`
 **Files:** `js/modules/richcontent.js`, `css/richcontent.css`, `tests/richcontent.test.js`
 
 **Prompt:**
 ```
 Instance 3: Rich Content
 
-Implement image handling and rich content features:
+CONTEXT:
+Add support for images, attachments, interactive checkboxes, and Mermaid diagrams.
 
-1. Image Support (js/modules/richcontent.js):
-   class RichContentManager {
-     handleImageUpload(file)
-     handleImagePaste(clipboardData)
-     storeImage(imageData)  // Store in IndexedDB
-     renderImage(lineNumber, imageUrl)
-     attachResizeHandles(imageElement)
-   }
+Read:
+- PLAN.md section 6 (Rich Content Support)
+- .claude/progress/phase2/instance3.md
+- .claude/progress/phase2/coordination.md
 
-2. Features:
-   - Drag & drop images into editor
+YOUR RESPONSIBILITIES:
+
+1. Image Handling:
+   - Drag & drop images
    - Paste images from clipboard
-   - Resize images with corner handles
-   - Store images as base64 in IndexedDB
-   - Render images inline at correct line
-   - Delete images when line is deleted
+   - Store as base64 in IndexedDB
+   - Render inline at correct line
+   - Resize handles (corner drag)
+   - Delete when line deleted
 
-3. File Attachments:
+2. File Attachments:
    - Attach any file type
    - Store in IndexedDB (up to 100MB)
-   - Download button for attachments
+   - Download button
    - File type icons
 
-4. Interactive Checkboxes:
+3. Interactive Checkboxes:
    - Render - [ ] as clickable checkbox
-   - Render - [x] as checked checkbox
-   - Update markdown on click
-   - Progress bars for parent tasks with subtasks
+   - Click updates markdown
+   - Progress bars for parent tasks
+   - Auto-complete parent when all children done
 
-5. Mermaid Diagrams:
-   - Detect ```mermaid code blocks
+4. Mermaid Diagrams:
+   - Detect ```mermaid blocks
    - Load mermaid.js dynamically
-   - Render diagram below code block
-   - Toggle between source/rendered view
+   - Render diagram below code
+   - Toggle source/rendered view
+   - Export as SVG
 
-Reference PLAN.md section 6 (Rich Content).
+5. Integration:
+   - Hook into renderer for inline content
+   - Use storage for images/attachments
+   - Use parser to find code blocks
+
+DEVELOPMENT APPROACH:
+Day 1-2: Image upload + storage
+Day 3: Image resize handles
+Day 4: Interactive checkboxes
+Day 5-6: Mermaid integration
+Day 7: File attachments + testing
+
+VALIDATION:
+- [ ] Can upload and see images
+- [ ] Images persist across sessions
+- [ ] Resize handles work
+- [ ] Checkboxes are clickable
+- [ ] Mermaid diagrams render
+- [ ] File attachments work
+- [ ] 25+ tests passing
+
+UPDATE PROGRESS:
+- Update instance3.md after each feature
+- Document image storage approach (base64 vs blob URLs)
+- Log performance with large images
+
+START: Image upload and storage first (it's the foundation for attachments).
 ```
-
-**Success Criteria:**
-- Can upload and resize images
-- Images persist across sessions
-- Checkboxes are clickable and update document
-- Mermaid diagrams render correctly
 
 ### Instance 4: Export/Import
 
 **Branch:** `feature/export`
+**Progress File:** `.claude/progress/phase2/instance4.md`
 **Files:** `js/modules/export.js`, `js/modules/import.js`, `js/workers/crypto.worker.js`, `tests/export.test.js`
 
 **Prompt:**
 ```
-Instance 4: Export/Import
+Instance 4: Export/Import & Encryption
 
-Implement document export/import with encryption:
+CONTEXT:
+Build robust export/import with encryption and three import modes.
 
-1. Export Manager (js/modules/export.js):
-   class ExportManager {
-     exportDocument(scope, options)
-     generateFileName(headerPath)
-     compressData(data)
-     encryptData(data, password)
-     includeAttachments(attachments)
-     downloadFile(blob, filename)
-   }
+Read:
+- PLAN.md sections 7.4-7.9 (Export/Import)
+- .claude/progress/phase2/instance4.md
+- .claude/progress/phase2/coordination.md
 
-2. Export Features:
-   - Scope options: Full document / Current header / Custom selection
-   - Compression with gzip
-   - Optional encryption (per-header or full document)
+YOUR RESPONSIBILITIES:
+
+1. Export Manager:
+   - Export full document or header scope
+   - Compression (gzip)
+   - Optional encryption (AES-256-GCM)
    - Include images/attachments
-   - Generate .txt filename (discrete encryption)
+   - Generate .txt filename (discrete)
 
-3. Import Manager (js/modules/import.js):
-   class ImportManager {
-     detectImportMode(fileData)
-     importBackup()       // Create new document
-     importSync()         // Merge with existing via environment ID
-     importInject()       // Insert at cursor/header
-     validateEnvironmentId()
-     decryptData(data, password)
-   }
+2. Import Manager:
+   - Three modes:
+     a) Backup & Recover (new document)
+     b) Sync (merge via environment ID)
+     c) Inject (insert at cursor/header)
+   - Auto-detect mode
+   - Handle encrypted imports
+   - Validate data integrity
 
-4. Import Modes:
-   - Backup & Recover: Create new document
-   - Sync: Detect previous import via environment ID, merge changes
-   - Inject: Insert content at specified header location
-
-5. Encryption:
-   - Use Web Crypto API (crypto.worker.js for performance)
-   - AES-256-GCM encryption
+3. Encryption:
+   - Web Crypto API
    - PBKDF2 key derivation
+   - Per-header OR full document
    - Silent failure on wrong password (security)
+   - Use Web Worker for performance
 
-Reference PLAN.md sections 7.4-7.9 (Export/Import).
+4. Environment ID:
+   - Generate unique ID per environment
+   - Use for sync detection
+   - Prevent duplicate imports
+
+DEVELOPMENT APPROACH:
+Day 1-2: Export with compression
+Day 3-4: Encryption (Web Crypto)
+Day 5: Import modes
+Day 6-7: Integration + security testing
+
+VALIDATION:
+- [ ] Export works (full doc + scoped)
+- [ ] Compression reduces size
+- [ ] Encryption works (can't read without password)
+- [ ] Wrong password fails silently
+- [ ] Import modes work correctly
+- [ ] Images included in export
+- [ ] 30+ tests passing
+
+SECURITY NOTES:
+- Never log passwords
+- Never expose decrypted content on error
+- Test with various password strengths
+- Document security approach in decisions.md
+
+UPDATE PROGRESS:
+- Update instance4.md after each security milestone
+- Document encryption choices
+- Log security learnings
+
+START: Basic export (no encryption) with compression. Test thoroughly.
 ```
-
-**Success Criteria:**
-- Can export full document or header sections
-- Encryption/decryption works correctly
-- Import detects correct mode
-- Attachments included in export
-- Wrong password fails silently
 
 ### Instance 5: Themes & UI Polish
 
 **Branch:** `feature/themes`
+**Progress File:** `.claude/progress/phase2/instance5.md`
 **Files:** `js/modules/themes.js`, `js/modules/keyboard.js`, `css/themes.css`, `tests/themes.test.js`
 
 **Prompt:**
 ```
 Instance 5: Themes & UI Polish
 
-Implement theming system and polish UI:
+CONTEXT:
+Make folded beautiful with custom themes, keyboard shortcuts, and command palette.
 
-1. Theme System (js/modules/themes.js):
-   class ThemeManager {
-     themes: Array<Theme>
-     applyTheme(themeId)
-     createCustomTheme()
-     editTheme(themeId, properties)
-     exportTheme()
-     importTheme(themeData)
-   }
+Read:
+- PLAN.md sections 5 (UI/UX), 6 (Keyboard), 8 (Themes)
+- .claude/progress/phase2/instance5.md
+- .claude/progress/phase2/coordination.md
 
-2. Built-in Themes (6+ themes):
+YOUR RESPONSIBILITIES:
+
+1. Theme System:
+   - 6+ built-in themes
+   - Custom theme editor
+   - Live preview
+   - Export/import themes
+   - CSS variable based
+
+2. Built-in Themes:
    - Dracula Dark
    - Solarized Dark
    - Solarized Light
@@ -379,755 +1353,549 @@ Implement theming system and polish UI:
    - GitHub Light
    - Tokyo Night
 
-3. Theme Editor UI:
-   - Color picker for all theme variables
-   - Live preview
+3. Theme Editor:
+   - Color pickers for all variables
+   - Font family/size controls
+   - Line height adjustment
    - Save custom themes
-   - Export/import themes as JSON
 
-4. Keyboard Shortcuts (js/modules/keyboard.js):
-   - Centralized keyboard shortcut manager
+4. Keyboard Shortcuts:
+   - Centralized manager
    - Customizable shortcuts
    - Shortcut hint overlay (Cmd+?)
    - Conflict detection
 
 5. Command Palette:
-   - Fuzzy search for all commands
+   - Fuzzy search all commands
    - Recent commands
    - Keyboard shortcut hints
 
 6. Settings Panel:
    - Theme selector
-   - Font size/family
-   - Line height
-   - Auto-save interval
+   - Font settings
    - All feature toggles
+   - Auto-save interval
 
-Reference PLAN.md sections 5 (UI/UX), 6 (Keyboard Shortcuts), 8 (Themes).
+DEVELOPMENT APPROACH:
+Day 1-2: Theme system + built-ins
+Day 3: Theme editor
+Day 4: Keyboard manager
+Day 5: Command palette
+Day 6-7: Settings panel + polish
+
+VALIDATION:
+- [ ] All 6 themes work
+- [ ] Can create custom theme
+- [ ] Theme persists across sessions
+- [ ] Command palette finds commands
+- [ ] Keyboard shortcuts customizable
+- [ ] Settings panel complete
+- [ ] 20+ tests passing
+
+UPDATE PROGRESS:
+- Update instance5.md as you add themes
+- Document theme architecture
+- Log UX insights
+
+START: Theme system with CSS variables and one working theme.
 ```
-
-**Success Criteria:**
-- All built-in themes work correctly
-- Can create and save custom theme
-- Command palette finds all commands
-- Settings persist across sessions
 
 ### Instance 6: Code Previews
 
 **Branch:** `feature/codepreview`
+**Progress File:** `.claude/progress/phase2/instance6.md`
 **Files:** `js/modules/codepreview.js`, `css/codepreview.css`, `tests/codepreview.test.js`
 
 **Prompt:**
 ```
 Instance 6: Code Previews
 
-Implement HTML code block previews:
+CONTEXT:
+Enable HTML code block previews with sandboxed iframes.
 
-1. Preview Manager (js/modules/codepreview.js):
-   class CodePreviewManager {
-     detectHtmlBlocks()
-     createSandboxedIframe(htmlContent)
-     renderPreview(lineNumber, htmlContent)
-     attachResizeHandles(previewElement)
-     captureConsoleLogs()
-   }
+Read:
+- PLAN.md section 6.6 (Code Previews)
+- .claude/progress/phase2/instance6.md
+- .claude/progress/phase2/coordination.md
 
-2. Features:
-   - Detect ```html code blocks
-   - Render in sandboxed iframe
-   - Resize preview window
-   - Toggle between source/preview
-   - Console output capture
-   - Error display
+YOUR RESPONSIBILITIES:
 
-3. Security:
-   - Sandboxed iframe (sandbox="allow-scripts")
+1. Preview Manager:
+   - Detect ```html blocks
+   - Create sandboxed iframe
+   - Render HTML safely
+   - Capture console logs
+   - Display errors
+
+2. Security:
+   - Sandboxed iframe (allow-scripts only)
    - CSP headers
-   - No access to parent page
+   - No parent page access
+   - XSS prevention
 
-4. Preview Window Management:
-   - Multiple previews in same document
-   - Minimize/maximize previews
-   - Side-by-side preview mode
-   - Auto-refresh on code changes
+3. UI:
+   - Resizable preview window
+   - Toggle source/preview
+   - Minimize/maximize
+   - Console output display
 
-Reference PLAN.md section 6.6 (Code Previews).
+4. Multi-Preview:
+   - Multiple previews in document
+   - Each independent
+   - Auto-refresh on code change
+   - Manage preview lifecycle
+
+DEVELOPMENT APPROACH:
+Day 1-2: Basic iframe preview
+Day 3: Sandboxing + security
+Day 4: Resize handles
+Day 5: Console capture
+Day 6-7: Multi-preview + polish
+
+VALIDATION:
+- [ ] HTML renders in preview
+- [ ] Sandbox prevents parent access
+- [ ] Can resize preview
+- [ ] Console logs visible
+- [ ] Multiple previews work
+- [ ] No XSS vulnerabilities
+- [ ] 15+ tests passing
+
+SECURITY TESTING:
+Test with malicious code:
+- <script>alert(document.cookie)</script>
+- <script>top.location = "evil.com"</script>
+- <iframe src="evil.com"></iframe>
+
+None should escape sandbox. Document in tests-results.md
+
+UPDATE PROGRESS:
+- Update instance6.md
+- Document security approach
+- Log security test results
+
+START: Basic preview with proper sandboxing. Security first!
 ```
 
-**Success Criteria:**
-- HTML previews render correctly
-- Previews are sandboxed and secure
-- Can resize preview windows
-- Console logs visible in preview
+### Phase 2 Daily Coordination
+
+**Every day, each instance should:**
+
+1. **Morning:** Read `coordination.md`, update your section with today's plan
+2. **During work:** Update your instance progress file
+3. **Evening:** Update `coordination.md` with progress, blockers, needs
+
+**Example coordination.md entry:**
+
+```markdown
+## Daily Standup - 2026-01-07
+
+### Instance 1: Folding
+- Status: In Progress (Day 3)
+- Progress: 60%
+- Completed: Fold data structure, basic fold/unfold
+- Today: Adding UI indicators and click handlers
+- Blockers: None
+- Notes: Fold state persisting to IndexedDB works great
+
+### Instance 2: Search
+- Status: In Progress (Day 2)
+- Progress: 40%
+- Completed: Search engine with regex
+- Today: Building search UI modal
+- Blockers: Waiting for decision on folded content handling
+- Notes: Need to coordinate with Instance 1 on search behavior
+
+### Instance 3: Rich Content
+- Status: In Progress (Day 1)
+- Progress: 20%
+- Completed: Image upload working
+- Today: Implementing image storage
+- Blockers: None
+- Notes: Considering base64 vs blob URLs (will document decision)
+
+### Instance 4: Export/Import
+- Status: In Progress (Day 1)
+- Progress: 15%
+- Completed: Basic export structure
+- Today: Adding compression
+- Blockers: None
+- Notes: Gzip compression working, ~70% size reduction
+
+### Instance 5: Themes
+- Status: In Progress (Day 2)
+- Progress: 30%
+- Completed: Theme system, 2 themes working
+- Today: Adding remaining built-in themes
+- Blockers: None
+- Notes: CSS variables approach working well
+
+### Instance 6: Code Previews
+- Status: In Progress (Day 2)
+- Progress: 25%
+- Completed: Basic iframe preview
+- Today: Implementing sandboxing
+- Blockers: None
+- Notes: Testing various CSP configurations
+
+## Integration Issues
+- **Search + Folding:** Need to decide if search should look inside folded content
+  - Recommendation: Skip folded content (cleaner UX)
+  - Decision needed by: Tomorrow
+  - Owners: Instance 1 & 2
+
+## Shared Interface Changes
+None today
+
+## Next Steps
+- Resolve search + folding behavior
+- All instances on track for Week 1 completion
+```
 
 ---
 
 ## Phase 3: Advanced Features (4 Instances)
 
-**Prerequisites:** Phase 2 complete, all features integrated and tested.
+**Prerequisites:** Phase 2 complete and integrated.
 
-### Instance 7: Inline Computation
+[Similar structure as Phase 2, with 4 instances:]
+- Instance 7: Inline Computation
+- Instance 8: Document Restructuring
+- Instance 9: Kanban View
+- Instance 10: GitHub Auto-Sync
 
-**Branch:** `feature/compute`
-**Files:** `js/modules/compute.js`, `tests/compute.test.js`
-
-**Prompt:**
-```
-Instance 7: Inline Computation
-
-Implement variable computation system:
-
-1. Computation Engine (js/modules/compute.js):
-   class ComputationEngine {
-     parseDocument()
-     extractVariables(scope)
-     resolveVariable(scope, varName)
-     evaluateExpression(expr, scope)
-     evaluateInline(expr, scope)
-     updateDisplay(lineNumber, result)
-     trackDependencies()
-     triggerReactiveUpdates()
-   }
-
-2. Variable Syntax:
-   - $variable = expression  → result
-   - ${ expression }  → result (inline, no variable name)
-   - Header-scoped variables (inherit from parent headers)
-
-3. Features:
-   - Safe expression evaluation (sandboxed)
-   - Dependency tracking (topological sort)
-   - Reactive updates (changing $x updates all dependent variables)
-   - Support for: math, dates, strings, arrays
-   - Display results with → symbol
-
-4. Scope Resolution:
-   - Variables defined in parent headers are accessible
-   - Child variables override parent variables
-   - /path/to/header/var for explicit scope reference
-
-Reference PLAN.md section 9 (Inline Variable Computation).
-```
-
-**Success Criteria:**
-- Variables compute correctly
-- Scoped variables inherit from parents
-- Changes trigger reactive updates
-- ${} inline expressions work
-
-### Instance 8: Document Restructuring
-
-**Branch:** `feature/restructure`
-**Files:** `js/modules/restructure.js`, `css/restructure.css`, `tests/restructure.test.js`
-
-**Prompt:**
-```
-Instance 8: Document Restructuring
-
-Implement visual restructuring mode:
-
-1. Restructure Manager (js/modules/restructure.js):
-   class RestructureManager {
-     enterRestructureMode()
-     buildTreeView()
-     enableDragDrop()
-     moveHeader(fromPath, toPath)
-     applyChanges()
-     exitRestructureMode()
-   }
-
-2. Tree View:
-   - Hierarchical display of all headers
-   - Expandable/collapsible sections
-   - Indent levels match header levels
-   - Visual drag handles
-
-3. Drag & Drop:
-   - Drag headers to reorder
-   - Drag to change hierarchy (indent/outdent)
-   - Visual drop zones
-   - Preview of new structure
-
-4. Keyboard Shortcuts:
-   - Alt+Up/Down: Move header up/down
-   - Alt+Left/Right: Change indent level
-   - Enter: Edit header text inline
-   - Esc: Cancel and exit
-
-5. Auto-Organize:
-   - Sort alphabetically
-   - Sort by date (if headers contain dates)
-   - Group by tag
-   - Sort by length
-
-Reference PLAN.md section 10 (Document Restructuring).
-```
-
-**Success Criteria:**
-- Tree view shows correct hierarchy
-- Drag & drop updates document correctly
-- Keyboard shortcuts work
-- Changes apply correctly to markdown
-
-### Instance 9: Kanban View
-
-**Branch:** `feature/kanban`
-**Files:** `js/modules/kanban.js`, `css/kanban.css`, `tests/kanban.test.js`
-
-**Prompt:**
-```
-Instance 9: Kanban View
-
-Implement Kanban board visualization:
-
-1. Kanban Manager (js/modules/kanban.js):
-   class KanbanView {
-     parseTasksFromDocument()
-     buildKanbanBoard()
-     organizeColumns()
-     renderBoard()
-     enableDragDrop()
-     syncChangesToMarkdown()
-     configureColumns()
-   }
-
-2. Task Parser:
-   - Extract all checkbox items (- [ ] / - [x])
-   - Parse tags: #todo, #in-progress, #done
-   - Parse assignees: @username
-   - Parse due dates: 📅 2026-01-15
-   - Track subtasks and calculate progress
-
-3. Kanban Board:
-   - Configurable columns (default: Todo / In Progress / Done)
-   - Column configuration UI (add/edit/remove columns)
-   - Tag-based column assignment
-   - Checked/unchecked state matching
-   - Drag tasks between columns
-   - Task cards show: content, progress, assignees, due dates
-
-4. Sync Behavior:
-   - Moving task updates tag in markdown
-   - Checking task moves to "Done" column
-   - Changes in markdown reflect in Kanban view
-   - Auto-save on every change
-
-Reference PLAN.md section 11 (Kanban Board View) and 11.7 (Column Configuration).
-```
-
-**Success Criteria:**
-- Kanban board shows all tasks correctly
-- Drag & drop updates markdown
-- Column configuration works
-- Progress bars accurate for parent tasks
-
-### Instance 10: GitHub Auto-Sync
-
-**Branch:** `feature/github`
-**Files:** `js/modules/github-sync.js`, `tests/github-sync.test.js`
-
-**Prompt:**
-```
-Instance 10: GitHub Auto-Sync
-
-Implement automatic GitHub synchronization:
-
-1. GitHub Sync Manager (js/modules/github-sync.js):
-   class GitHubSync {
-     configure(token, repo, branch, interval)
-     startAutoSync()
-     stopAutoSync()
-     syncNow()
-     detectConflicts()
-     resolveConflicts()
-     updateStatusBar()
-   }
-
-2. Features:
-   - Auto-export every N seconds (user configurable, default 60)
-   - Push to GitHub repository via API
-   - Detect remote changes and pull
-   - Conflict resolution (last-write-wins or manual)
-   - Status bar indicator (syncing, synced, error)
-
-3. Configuration UI:
-   - GitHub token input
-   - Repository selector
-   - Branch selector
-   - Sync interval (free text input for seconds)
-   - File path in repo
-
-4. Sync Behavior:
-   - Only sync when changes detected
-   - Export as .txt file (discrete)
-   - Commit with descriptive message
-   - Pull before push
-   - Handle rate limits
-
-Reference PLAN.md section 11.4 (GitHub Auto-Sync).
-```
-
-**Success Criteria:**
-- Syncs to GitHub automatically
-- Interval is configurable
-- Conflicts detected and resolved
-- Status bar shows sync state
+[Each with same level of detail as Phase 2 instances]
 
 ---
 
 ## Phase 4: Polish & Integration (2 Instances)
 
-### Instance 11: Scrappy (Stale Header Detection)
+**Prerequisites:** Phase 3 complete.
 
-**Branch:** `feature/scrappy`
-**Files:** `js/modules/scrappy.js`, `css/scrappy.css`, `tests/scrappy.test.js`
-
-**Prompt:**
-```
-Instance 11: Scrappy - Stale Header Detection
-
-Implement AI-powered content cleanup assistant:
-
-1. Scrappy Manager (js/modules/scrappy.js):
-   class Scrappy {
-     analyzeHeaders()
-     calculateStaleness(header)
-     generatePreview(header)
-     suggestDeletion()
-     archiveHeaders(headers)
-     deleteHeaders(headers)
-   }
-
-2. Staleness Algorithm:
-   - Track: last edited date, last viewed date, header age
-   - Score based on: time since edit, time since view, content patterns
-   - Detect abandoned TODOs
-   - Identify completed project sections
-
-3. Scrappy UI:
-   - Modal showing stale headers
-   - Preview: first 8 lines and last 8 lines
-   - Bulk selection checkboxes
-   - Archive vs Delete options
-   - Configurable staleness threshold
-
-4. Header Metadata:
-   - Store in IndexedDB: created, lastEdited, lastViewed
-   - Update on header view/edit
-   - Manual "keep forever" override
-
-Reference PLAN.md section 12 (Scrappy).
-```
-
-**Success Criteria:**
-- Correctly identifies stale headers
-- Preview shows relevant content
-- Archive moves to #Archive header
-- Manual overrides work
-
-### Instance 12: Performance & Testing (Main Developer)
-
-**Branch:** `main`
-**Files:** All modules, `tests/e2e/`, performance profiling
-
-**Prompt:**
-```
-Instance 12: Performance Optimization & Integration Testing
-
-Final polish and performance optimization:
-
-1. Performance Optimizations:
-   - Profile with Chrome DevTools
-   - Optimize virtual scrolling for 100K+ lines
-   - Selection-aware rendering (don't despawn selected lines)
-   - Debounce expensive operations
-   - Use Web Workers for heavy computation
-   - Optimize IndexedDB queries
-
-2. Cross-Browser Testing:
-   - Test in Chrome, Firefox, Safari, Edge
-   - Fix browser-specific issues
-   - Test on mobile browsers
-
-3. E2E Integration Tests:
-   - Full document workflow (create → edit → save → load)
-   - Test all features working together
-   - Performance benchmarks
-   - Memory leak detection
-
-4. Mobile Responsiveness:
-   - Touch-friendly UI
-   - Mobile keyboard handling
-   - Responsive layout for small screens
-
-5. CI/CD Integration:
-   - Set up browser automation tests with Claude Code Chrome plugin
-   - Run tests on every PR
-   - Performance regression detection
-
-Reference PLAN.md sections 12 (Performance Optimizations) and 13 (Testing Strategy).
-```
-
-**Success Criteria:**
-- 60fps scrolling with 100K lines
-- All tests pass
-- No memory leaks
-- Works on mobile devices
+[Similar structure for final polish phase]
 
 ---
 
 ## Integration Workflow
 
-### Daily Coordination
+### Weekly Integration Meetings
 
-**Shared Document (coordination.md):**
+Every week, review:
+
 ```markdown
-# Daily Standup - [Date]
+# Weekly Integration Review - Week [N]
 
-## Instance 1: Folding
-- Completed: Fold creation and toggle
-- In Progress: Header copy/paste
-- Blocked: None
-- Interface Changes: Added FoldManager.getFoldsInRange()
+## Completed This Week
+- Instance 1: [Summary]
+- Instance 2: [Summary]
+...
 
-## Instance 2: Search
-- Completed: Regex search engine
-- In Progress: Search UI modal
-- Blocked: Waiting for renderer highlight API
-- Interface Changes: None
+## Integration Challenges
+[What problems emerged when combining work?]
 
-[... etc for all instances ...]
+## Solutions Implemented
+[How we solved them]
 
-## Integration Issues
-- Issue: Folding and search both modify line visibility
-- Resolution: Folding takes precedence, search skips hidden lines
+## Carry Forward
+[What needs more work next week]
 
-## Shared File Conflicts
-- None this week
-```
+## Performance Impact
+[Did any features slow things down?]
 
-### Pull Request Process
+## Test Results
+[Overall test suite status]
 
-**PR Template:**
-```markdown
-## Feature: [Feature Name]
-Instance: #X
-Branch: feature/[name]
-
-### Summary
-Brief description of what this PR implements.
-
-### Files Changed
-- js/modules/[name].js - Core implementation
-- css/[name].css - Styles
-- tests/[name].test.js - Unit tests
-
-### Interface Changes
-Document any new methods added to shared interfaces.
-
-### Testing
-- [ ] All unit tests pass
-- [ ] Manual testing completed
-- [ ] No conflicts with other features
-- [ ] Performance impact measured
-
-### Integration Notes
-Any special considerations for integration.
-
-### Screenshots/Demo
-If applicable, show the feature in action.
+## Next Week Plan
+[What each instance will focus on]
 ```
 
 ### Merge Strategy
 
-1. **Week 1-2**: Each instance develops independently on feature branch
-2. **Week 3**: Integration week - merge one feature at a time
-3. **Week 4**: Bug fixes and polish
+Merge in order of dependencies:
 
-**Merge Order (to minimize conflicts):**
-1. Themes (changes CSS)
-2. Folding (changes renderer)
-3. Search (uses folding)
-4. Rich Content (uses renderer)
-5. Export/Import (uses storage)
-6. Code Previews (independent)
+1. **Themes** (changes CSS, low risk)
+2. **Folding** (changes renderer, medium risk)
+3. **Search** (depends on folding, medium risk)
+4. **Rich Content** (changes renderer, medium risk)
+5. **Export/Import** (depends on storage, low risk)
+6. **Code Previews** (independent, low risk)
 
----
+**For each merge:**
 
-## Common Patterns
+```markdown
+## Pre-Merge Checklist - [Feature Name]
 
-### Module Template
+- [ ] All tests pass on feature branch
+- [ ] Rebased on latest main
+- [ ] No merge conflicts
+- [ ] Manually tested in isolation
+- [ ] Manually tested with already-merged features
+- [ ] Performance benchmarks run
+- [ ] Documentation updated
+- [ ] Progress files updated
 
-```javascript
-// js/modules/[feature].js
+## Merge Process
 
-class FeatureManager {
-  constructor(editor, parser, storage) {
-    this.editor = editor
-    this.parser = parser
-    this.storage = storage
+1. Create PR from feature branch
+2. Review changes (use PR template)
+3. Run full test suite
+4. Merge to main
+5. Tag release: v0.x-[feature-name]
+6. Update coordination.md
+7. Notify all instances of merge
 
-    this.initialize()
-  }
+## Post-Merge Validation
 
-  async initialize() {
-    // Load settings, set up event listeners
-    await this.loadSettings()
-    this.setupEventListeners()
-  }
-
-  async loadSettings() {
-    this.settings = await this.storage.getSetting('[feature]_settings') || this.getDefaultSettings()
-  }
-
-  getDefaultSettings() {
-    return {
-      // default configuration
-    }
-  }
-
-  setupEventListeners() {
-    // Register keyboard shortcuts, editor events, etc.
-  }
-
-  // Public API methods
-
-  // Private helper methods
-}
-
-export default FeatureManager
-```
-
-### Test Template
-
-```javascript
-// tests/[feature].test.js
-
-import FeatureManager from '../js/modules/[feature].js'
-
-describe('FeatureManager', () => {
-  let feature
-  let mockEditor
-  let mockParser
-  let mockStorage
-
-  beforeEach(() => {
-    mockEditor = {
-      getLine: jest.fn(),
-      setLine: jest.fn()
-    }
-    mockParser = {
-      parse: jest.fn()
-    }
-    mockStorage = {
-      getSetting: jest.fn(),
-      setSetting: jest.fn()
-    }
-
-    feature = new FeatureManager(mockEditor, mockParser, mockStorage)
-  })
-
-  test('should initialize with default settings', async () => {
-    await feature.initialize()
-    expect(feature.settings).toBeDefined()
-  })
-
-  test('should [specific functionality]', () => {
-    // Test specific feature behavior
-  })
-})
+- [ ] All tests still pass
+- [ ] No new console errors
+- [ ] Performance unchanged
+- [ ] Existing features still work
 ```
 
 ---
 
-## Troubleshooting
+## Troubleshooting Guide
 
-### Common Issues
+### Common Problems & Solutions
 
-**Issue: Module can't access core interfaces**
+#### "I don't know where to start"
+
+**Solution:**
+1. Read `current-state.md` - it tells you exactly where you are
+2. If it says "Not started" - start with the smallest piece (usually data structures)
+3. If it says "In progress" - check "Current Task" and continue there
+4. Write tests first - they clarify what you're building
+
+#### "Tests are failing after integration"
+
+**Solution:**
+1. Isolate: Do tests pass for the individual module?
+2. If yes → integration issue. Check interfaces.
+3. If no → module issue. Fix the module first.
+4. Use `git bisect` to find when it broke
+5. Check `decisions.md` for architectural assumptions that changed
+
+#### "Performance degraded"
+
+**Solution:**
+1. Profile with Chrome DevTools
+2. Check `tests-results.md` for baseline metrics
+3. Look for:
+   - N^2 algorithms (common in search/fold)
+   - Excessive re-renders
+   - Memory leaks (detached DOM)
+   - Synchronous IndexedDB (should be async)
+4. Document findings in `learnings.md`
+
+#### "I'm blocked by another instance"
+
+**Solution:**
+1. Document blocker in your instance progress file
+2. Update `coordination.md` with blocker
+3. Create mock/stub of the dependency
+4. Continue with your work using the mock
+5. Replace with real implementation when available
+
+#### "Should I refactor this code?"
+
+**Decision Tree:**
 ```
-Solution: Ensure core modules (editor, parser, etc.) are passed to constructor.
-Check that Phase 1 is complete and interfaces are documented.
+Is it working? → No → Fix it first
+                ↓ Yes
+Is it tested? → No → Write tests first
+                ↓ Yes
+Is it slow? → Yes → Profile, optimize, document
+             ↓ No
+Is it confusing? → Yes → Refactor, keep tests passing
+                  ↓ No
+Leave it alone! → Move to next task
 ```
 
-**Issue: Features conflict (e.g., folding + search)**
-```
-Solution: Coordinate in daily standup. Define priority order.
-Example: Folding hides lines, search should skip hidden lines.
-```
+#### "I made a wrong architectural decision"
 
-**Issue: Performance degradation**
-```
-Solution: Profile with Chrome DevTools. Check for:
-- N^2 algorithms
-- Unnecessary re-renders
-- Memory leaks (detached DOM nodes)
-- Large IndexedDB transactions
-```
-
-**Issue: Tests failing after integration**
-```
-Solution:
-1. Run tests in isolation first
-2. Check for shared state between tests
-3. Mock all external dependencies
-4. Use beforeEach to reset state
-```
+**Solution:**
+1. Document the problem in `decisions.md`
+2. Explain what you learned
+3. Propose alternative approach
+4. Estimate cost to change
+5. If cost is low → change it now
+6. If cost is high → add to backlog, work around for now
+7. Update `learnings.md` with the lesson
 
 ---
 
 ## Success Metrics
 
-### Phase 1 Complete When:
-- [ ] Can type and see syntax highlighting
-- [ ] Documents save and load from IndexedDB
-- [ ] Virtual scrolling works with 10K+ lines
-- [ ] No console errors
-- [ ] All Phase 1 tests pass
+### Per-Phase Success Criteria
 
-### Phase 2 Complete When:
-- [ ] All 6 features work independently
-- [ ] All feature branches merged to main
-- [ ] Integration tests pass
-- [ ] No feature conflicts
-- [ ] All Phase 2 tests pass
-
-### Phase 3 Complete When:
-- [ ] All 4 advanced features work
-- [ ] Features integrate with existing codebase
-- [ ] All Phase 3 tests pass
-- [ ] Performance benchmarks met
-
-### Phase 4 Complete When:
-- [ ] Scrappy correctly identifies stale content
-- [ ] Performance: 60fps scroll, <500ms load
-- [ ] All browsers supported
-- [ ] Mobile works well
-- [ ] E2E tests pass
-- [ ] Production ready
-
----
-
-## Emergency Contacts
-
-**If you get stuck:**
-1. Check PLAN.md for detailed specifications
-2. Review module interface documentation
-3. Check coordination.md for known issues
-4. Ask in daily standup
-
-**Critical Issues:**
-- Database corruption: Use backup/restore from export
-- Performance crisis: Profile and optimize critical path
-- Feature conflict: Coordinate priority in standup
-- Merge conflict: Resolve manually, test thoroughly
-
----
-
-## Final Checklist
-
-Before considering folded complete:
-
-### Core Features
-- [ ] Create/edit/save documents
-- [ ] Fold/unfold any section
+**Phase 1 Success:**
+- [ ] All 40+ tests passing
+- [ ] Can edit and persist documents
 - [ ] Syntax highlighting works
-- [ ] Search with regex and scopes
-- [ ] URL-based navigation
-- [ ] Export/import with encryption
-- [ ] Rich content (images, attachments)
+- [ ] 60fps scrolling with 100K lines
+- [ ] Load time < 500ms
+
+**Phase 2 Success:**
+- [ ] All 6 features work independently
+- [ ] 100+ tests passing
+- [ ] All features integrated
+- [ ] No performance regression
+- [ ] All progress files updated
+
+**Phase 3 Success:**
+- [ ] All 4 advanced features work
+- [ ] 150+ tests passing
+- [ ] Features compound nicely
+- [ ] Performance still good
+
+**Phase 4 Success:**
+- [ ] Production ready
+- [ ] All browsers supported
+- [ ] 200+ tests passing
+- [ ] Documentation complete
+- [ ] User guide written
+
+### Overall Project Success
+
+```markdown
+## folded is DONE when:
+
+### Core Functionality
+- [ ] Can create/edit/save documents
+- [ ] Can fold anywhere
+- [ ] Syntax highlighting
+- [ ] Search with regex
+- [ ] URL navigation
+- [ ] Export with encryption
+- [ ] Rich content (images, checkboxes)
 - [ ] Custom themes
-- [ ] Command palette
-- [ ] Keyboard shortcuts
 
 ### Advanced Features
-- [ ] Inline computation with variables
+- [ ] Inline computation
 - [ ] Document restructuring
-- [ ] Kanban board view
-- [ ] GitHub auto-sync
-- [ ] Scrappy stale detection
+- [ ] Kanban view
+- [ ] GitHub sync
+- [ ] Scrappy (stale detection)
 - [ ] Code previews
-- [ ] Split view (multi-pane)
-- [ ] Mermaid diagrams
+- [ ] Split view
 
 ### Performance
-- [ ] Handle 100K+ lines smoothly
+- [ ] 100K+ lines smooth
 - [ ] 60fps scrolling
 - [ ] <16ms typing latency
-- [ ] <500ms load time
+- [ ] <500ms load
 
 ### Quality
-- [ ] All tests pass
+- [ ] 200+ tests passing
 - [ ] No console errors
 - [ ] No memory leaks
-- [ ] Works in all browsers
-- [ ] Mobile responsive
-- [ ] Accessible (ARIA labels)
+- [ ] Works in Chrome, Firefox, Safari, Edge
 
 ### Documentation
-- [ ] README with features
+- [ ] README
 - [ ] User guide
 - [ ] Developer docs
-- [ ] API documentation
-- [ ] Keyboard shortcuts reference
+- [ ] All progress files complete
+- [ ] All decisions documented
+- [ ] All learnings captured
 
----
-
-## Appendix: Quick Command Reference
-
-### Git Workflow
-```bash
-# Start new feature
-git checkout -b feature/[name]
-
-# Daily commits
-git add .
-git commit -m "feat([name]): description"
-
-# Push to remote
-git push -u origin feature/[name]
-
-# Create PR
-gh pr create --title "Feature: [Name]" --body "..."
-
-# Update from main
-git fetch origin main
-git rebase origin/main
-```
-
-### Testing
-```bash
-# Run all tests
-npm test
-
-# Run specific test file
-npm test -- tests/[feature].test.js
-
-# Run with coverage
-npm test -- --coverage
-
-# Watch mode
-npm test -- --watch
-```
-
-### Development Server
-```bash
-# Local development
-npx http-server . -p 8080
-
-# Open browser
-open http://localhost:8080
-```
-
-### Chrome DevTools Profiling
-```
-1. Open DevTools (F12)
-2. Performance tab
-3. Record while scrolling/typing
-4. Analyze flame graph
-5. Look for long tasks (>16ms)
+### User Validation
+- [ ] Can complete real-world tasks
+- [ ] Feels fast and responsive
+- [ ] UI is intuitive
+- [ ] No data loss under any condition
 ```
 
 ---
 
-**Good luck building folded! Remember: Start with Phase 1, get it perfect, then parallelize in Phase 2.**
+## Final Notes: Making Progress Compound
+
+**The Power of Incremental Progress:**
+
+Every small piece you complete:
+- Validates your approach
+- Teaches you something
+- Becomes foundation for next piece
+- Reduces overall risk
+
+**Document Everything:**
+
+Six months from now, when you're adding a new feature, you'll read your decision logs and learnings and think "wow, I'm glad I wrote that down."
+
+**Test Continuously:**
+
+Tests aren't overhead - they're insurance. They let you refactor fearlessly.
+
+**Keep Context:**
+
+Progress files might feel like busywork now, but they're what lets you pick up after a break without losing momentum.
+
+**Celebrate Milestones:**
+
+When you finish Phase 1, document it! When tests go from 40 to 100, note it! Progress is motivating.
+
+---
+
+**Good luck building folded! Remember:**
+
+1. **Read progress files first** - Always start by reading current-state.md
+2. **Build small** - Smallest testable piece
+3. **Test immediately** - Don't wait
+4. **Document decisions** - Future you will thank you
+5. **Update progress** - Keep files current
+6. **Learn continuously** - Capture insights
+7. **Compound knowledge** - Each piece builds on the last
+
+**Start with Phase 1. Get it perfect. Then parallelize in Phase 2.**
+
+---
+
+## Appendix: File Reference
+
+### Progress Files Structure
+
+```
+.claude/
+└── progress/
+    ├── current-state.md          # Where you are NOW
+    ├── decisions.md              # Why you made choices
+    ├── learnings.md              # What you discovered
+    ├── session-log.md            # Daily summaries
+    ├── tests-results.md          # Validation tracking
+    ├── phase1.md                 # Phase 1 specific
+    ├── phase2/
+    │   ├── coordination.md       # Multi-instance sync
+    │   ├── instance1.md          # Folding progress
+    │   ├── instance2.md          # Search progress
+    │   ├── instance3.md          # Rich content progress
+    │   ├── instance4.md          # Export progress
+    │   ├── instance5.md          # Themes progress
+    │   └── instance6.md          # Preview progress
+    ├── phase3/
+    │   └── [similar structure]
+    └── phase4/
+        └── [similar structure]
+```
+
+### Quick Commands
+
+```bash
+# Read current state
+cat .claude/progress/current-state.md
+
+# Update current state
+nano .claude/progress/current-state.md
+
+# Log session work
+echo "## $(date) - Session" >> .claude/progress/session-log.md
+
+# Run tests and log results
+npm test 2>&1 | tee -a .claude/progress/tests-results.md
+
+# Check all progress files
+find .claude/progress -name "*.md" -exec echo "\n=== {} ===" \; -exec cat {} \;
+```
+
+---
+
+**End of Development Guide. Now go build something amazing! 🚀**
