@@ -1,6 +1,6 @@
-# FoldingText Web - Claude Code Development Guide
+# folded Web - Claude Code Development Guide
 
-This guide provides detailed prompting instructions for building FoldingText Web using Claude Code with parallel development instances.
+This guide provides detailed prompting instructions for building folded Web using Claude Code with parallel development instances.
 
 ## Quick Reference
 
@@ -19,7 +19,7 @@ This guide provides detailed prompting instructions for building FoldingText Web
 
 **Before starting, provide to Claude:**
 ```
-I'm building FoldingText Web, a browser-based markdown editor with advanced folding capabilities.
+I'm building folded Web, a browser-based markdown editor with advanced folding capabilities.
 Please read PLAN.md to understand the full feature set and architecture.
 
 We're starting with Phase 1: Core Foundation. This phase builds the essential infrastructure
@@ -1026,7 +1026,7 @@ Solution:
 
 ## Final Checklist
 
-Before considering FoldingText complete:
+Before considering folded complete:
 
 ### Core Features
 - [ ] Create/edit/save documents
@@ -1130,4 +1130,4 @@ open http://localhost:8080
 
 ---
 
-**Good luck building FoldingText! Remember: Start with Phase 1, get it perfect, then parallelize in Phase 2.**
+**Good luck building folded! Remember: Start with Phase 1, get it perfect, then parallelize in Phase 2.**

@@ -1,8 +1,8 @@
-# FoldingText Web - Implementation Plan
+# folded Web - Implementation Plan
 
 ## Executive Summary
 
-Building a web-based version of FoldingText with these key requirements:
+Building a web-based version of folded with these key requirements:
 - **Serverless**: Runs entirely client-side
 - **Storage**: IndexedDB for persistence
 - **Format**: Plain text markdown (no WYSIWYG)
@@ -428,7 +428,7 @@ For users who prefer Cloudflare Pages:
 
 ### 2.2 IndexedDB Schema
 ```javascript
-Database: "FoldingTextDB"
+Database: "foldedDB"
 Version: 1
 
 Object Stores:
@@ -4316,7 +4316,7 @@ class KanbanView {
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  FoldingText          [📝 Text] [📊 Kanban]    [☰ Menu] │
+│  folded          [📝 Text] [📊 Kanban]    [☰ Menu] │
 ├─────────────────────────────────────────────────────────┤
 │                                                           │
 │  ┌───────────┐  ┌──────────────┐  ┌──────────────┐     │
@@ -5319,7 +5319,7 @@ parser.onmessage = (e) => updateTokens(e.data.tokens)
 ### 5.1 Layout
 ```
 ┌─────────────────────────────────────────────────┐
-│  FoldingText                          [☰ Menu]  │ ← Header (minimal)
+│  folded                          [☰ Menu]  │ ← Header (minimal)
 ├─────────────────────────────────────────────────┤
 │  [←] Documents                                  │ ← Sidebar (collapsible)
 │  ────────────────                               │
@@ -6576,7 +6576,7 @@ function decodeHeaderPath(encoded) {
 
 ### Browser Automation Testing with Claude Code Chrome Plugin
 
-The Claude Code Chrome plugin enables automated browser testing directly from Claude Code sessions. This is particularly useful for testing web applications like FoldingText that run entirely in the browser.
+The Claude Code Chrome plugin enables automated browser testing directly from Claude Code sessions. This is particularly useful for testing web applications like folded that run entirely in the browser.
 
 **Setup:**
 
@@ -6788,7 +6788,7 @@ jobs:
 **Test Script Format (.claude/tests/browser-tests.md):**
 
 ```markdown
-# FoldingText Browser Tests
+# folded Browser Tests
 
 ## Test 1: Performance
 - Navigate to http://localhost:8080
@@ -6919,7 +6919,7 @@ Decisions made based on user feedback:
 
 **Multi-Instance Development Plan**
 
-This section outlines how to build FoldingText using multiple parallel Claude Code instances to maximize development velocity. The strategy divides work into independent modules that can be developed concurrently without conflicts.
+This section outlines how to build folded using multiple parallel Claude Code instances to maximize development velocity. The strategy divides work into independent modules that can be developed concurrently without conflicts.
 
 ### 18.1 Development Philosophy
 
