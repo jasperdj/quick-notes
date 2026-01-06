@@ -78,6 +78,7 @@ body {
     flex: 1;
     position: relative;
     overflow: hidden;
+    background: var(--bg-primary);
 }
 
 .editor-wrapper {
@@ -93,8 +94,9 @@ body {
     width: 100%;
     height: 100%;
     padding: 20px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    background: transparent;
+    color: transparent;
+    caret-color: var(--text-primary);
     font-family: var(--font-mono);
     font-size: var(--font-size);
     line-height: var(--line-height);
@@ -102,8 +104,16 @@ body {
     outline: none;
     resize: none;
     z-index: 1;
-    caret-color: var(--text-primary);
     overflow-y: auto;
+    -webkit-text-fill-color: transparent;
+}
+
+.editor::selection {
+    background: rgba(0, 122, 204, 0.3);
+}
+
+.editor::-moz-selection {
+    background: rgba(0, 122, 204, 0.3);
 }
 
 .overlay {
@@ -121,6 +131,8 @@ body {
     overflow-y: auto;
     white-space: pre-wrap;
     word-wrap: break-word;
+    color: var(--text-primary);
+    background: var(--bg-primary);
 }
 
 /* Footer */
