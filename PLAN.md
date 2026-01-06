@@ -1548,7 +1548,7 @@ class CheckboxHandler {
 - Password-based key derivation (PBKDF2)
 - Encryption happens silently (no obvious UI indicator)
 - When exporting, user provides password
-- Export file is `.ftx` (FoldingText Export)
+- Export file is `notes.txt`
 
 ```javascript
 class ExportManager {
@@ -1644,7 +1644,7 @@ class ExportManager {
     const headerName = headerPath.split('/').filter(Boolean).pop() || 'document'
     const sanitized = headerName.replace(/[^a-z0-9]/gi, '_').toLowerCase()
     const timestamp = new Date().toISOString().split('T')[0]
-    const ext = encrypted ? 'ftx' : 'ftx'  // Same extension, discrete encryption
+    const ext = 'txt'  // Always .txt - encryption is discrete
     return `${sanitized}_${timestamp}.${ext}`
   }
 }
@@ -2411,10 +2411,10 @@ User only sees successfully imported content
 Continuously sync document changes to a GitHub repository every 1 minute, creating an automatic backup and version history. This runs in the background without user intervention.
 
 **Features:**
-- Auto-export every 1 minute when changes detected
+- Auto-export at configurable interval when changes detected
 - Push to configured GitHub repository
 - Commit messages with timestamps and change summaries
-- Configurable sync interval (default: 1 minute)
+- Fully customizable sync interval (default: 60 seconds, supports any value)
 - Sync indicator in status bar
 - Conflict resolution for concurrent edits
 - Option to enable/disable per document
@@ -2449,13 +2449,14 @@ class GitHubAutoSync {
 
   async configure(settings) {
     // Save GitHub sync settings
+    const intervalSeconds = parseInt(settings.syncIntervalSeconds) || 60
     this.config = {
       enabled: settings.enabled,
       token: settings.token,
       repo: settings.repo, // e.g., "username/quick-notes-backup"
       branch: settings.branch || 'main',
       filePath: settings.filePath || 'notes.txt',
-      syncInterval: settings.syncInterval || 60000
+      syncInterval: intervalSeconds * 1000 // Convert seconds to milliseconds
     }
 
     await this.storage.setSetting('github_sync', this.config)
@@ -2732,11 +2733,12 @@ class GitHubAutoSync {
 │ File Path:                                 │
 │ [notes.txt......................]         │
 │                                            │
-│ Sync Interval:                             │
-│ ( ) 30 seconds                             │
-│ (•) 1 minute (recommended)                 │
-│ ( ) 5 minutes                              │
-│ ( ) 15 minutes                             │
+│ Sync Interval (seconds):                   │
+│ [60..................] (recommended: 60)   │
+│                                            │
+│ Common values:                             │
+│   30 = 30 seconds  |  300 = 5 minutes     │
+│   60 = 1 minute    |  900 = 15 minutes    │
 │                                            │
 │ Last synced: 2 minutes ago                 │
 │ Status: ✅ All changes synced              │
@@ -2987,12 +2989,30 @@ $anothernumber = $number + 4 → 8
 Total: $anothernumber        → Total: 8
 ```
 
+**Inline Code Execution (without variable):**
+```
+${ 5 * 20 }                 → 100
+${ Math.sqrt(144) }         → 12
+${ new Date().getFullYear() } → 2026
+```
+
+**Combined Usage:**
+```
+$price = 29.99
+$quantity = 5
+Total: ${ $price * $quantity } → Total: 149.95
+Tax (10%): ${ ($price * $quantity) * 0.1 } → Tax (10%): 14.995
+```
+
 **Why this syntax:**
+- `$variable = expression` for named, reusable values
+- `${ expression }` for one-time calculations (like JavaScript template literals)
 - `$` prefix is familiar (bash, PHP, template languages)
 - Clean and minimal
 - Easy to parse with regex
 - Doesn't conflict with markdown syntax
 - Intuitive for both definition and reference
+- Supports complex expressions without polluting variable namespace
 
 ### 9.3 Alternative Syntax Considered
 
@@ -3065,9 +3085,10 @@ class ComputeEngine {
   }
 
   parseDocument() {
-    // Find all variable definitions and references
+    // Find all variable definitions, references, and inline expressions
     const varPattern = /\$(\w+)\s*=\s*([^→\n]+)/g
     const refPattern = /\$(\w+)/g
+    const inlinePattern = /\$\{\s*([^}]+)\s*\}/g
 
     for (const [lineNum, line] of this.document.lines.entries()) {
       const headerPath = this.getHeaderPath(lineNum)
@@ -3077,6 +3098,12 @@ class ComputeEngine {
       while ((match = varPattern.exec(line.text)) !== null) {
         const [full, varName, expression] = match
         this.defineVariable(headerPath, varName, expression.trim(), lineNum)
+      }
+
+      // Parse inline expressions ${ expression }
+      while ((match = inlinePattern.exec(line.text)) !== null) {
+        const [full, expression] = match
+        this.evaluateInline(headerPath, expression.trim(), lineNum, match.index)
       }
     }
 
@@ -3157,6 +3184,33 @@ class ComputeEngine {
     }
   }
 
+  evaluateInline(scope, expression, lineNumber, charIndex) {
+    // Evaluate inline expression ${ expression } and display result
+    try {
+      // Replace variable references in expression
+      const deps = this.extractDependencies(expression)
+      let evaluableExpr = expression
+
+      for (const dep of deps) {
+        const depValue = this.resolveVariable(scope, dep)
+        if (depValue !== null) {
+          evaluableExpr = evaluableExpr.replace(
+            new RegExp(`\\$${dep}`, 'g'),
+            depValue
+          )
+        }
+      }
+
+      // Evaluate expression
+      const result = this.safeEval(evaluableExpr)
+
+      // Update display inline (replace ${ expression } with result)
+      this.updateInlineDisplay(lineNumber, charIndex, expression, result)
+    } catch (e) {
+      this.updateInlineDisplay(lineNumber, charIndex, expression, `Error: ${e.message}`)
+    }
+  }
+
   resolveVariable(scope, varName) {
     // Look in current scope and parent scopes
     const scopeParts = scope.split('/')
@@ -3196,6 +3250,19 @@ class ComputeEngine {
       // Update existing result
       line.text = line.text.substring(0, arrowIndex) + `→ ${this.formatValue(value)}`
     }
+
+    // Trigger re-render
+    this.document.renderer.updateLine(lineNumber)
+  }
+
+  updateInlineDisplay(lineNumber, charIndex, expression, result) {
+    // Replace ${ expression } with result inline
+    const line = this.document.lines[lineNumber]
+    const pattern = `\$\\{\\s*${expression.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}`
+    const regex = new RegExp(pattern)
+
+    // Replace ${ expression } with → result
+    line.text = line.text.replace(regex, `→ ${this.formatValue(result)}`)
 
     // Trigger re-render
     this.document.renderer.updateLine(lineNumber)
@@ -3811,12 +3878,38 @@ The kanban view interprets checkbox items as tasks and organizes them into colum
 
 ```javascript
 class KanbanView {
-  constructor(editor, parser) {
+  constructor(editor, parser, storage) {
     this.editor = editor
     this.parser = parser
+    this.storage = storage
     this.isActive = false
     this.columns = new Map()
     this.tasks = []
+    this.columnConfig = null
+  }
+
+  async loadColumnConfig() {
+    // Load custom column configuration or use defaults
+    this.columnConfig = await this.storage.getSetting('kanban_columns') || this.getDefaultColumns()
+  }
+
+  getDefaultColumns() {
+    return [
+      { id: 'todo', title: 'Todo', tags: ['todo'], matchUnchecked: true },
+      { id: 'in-progress', title: 'In Progress', tags: ['in-progress', 'doing', 'wip'], matchUnchecked: true },
+      { id: 'done', title: 'Done', tags: ['done'], matchChecked: true }
+    ]
+  }
+
+  async configureColumns(newConfig) {
+    // Save custom column configuration
+    this.columnConfig = newConfig
+    await this.storage.setSetting('kanban_columns', newConfig)
+
+    // Re-render if kanban is active
+    if (this.isActive) {
+      this.refresh()
+    }
   }
 
   toggle() {
@@ -3827,7 +3920,12 @@ class KanbanView {
     }
   }
 
-  enterKanbanView() {
+  async enterKanbanView() {
+    // Load column configuration
+    if (!this.columnConfig) {
+      await this.loadColumnConfig()
+    }
+
     // Parse document for tasks
     this.tasks = this.parseTasksFromDocument()
 
@@ -3963,19 +4061,41 @@ class KanbanView {
   }
 
   organizeColumns() {
-    this.columns = new Map([
-      ['todo', { title: 'Todo', tasks: [] }],
-      ['in-progress', { title: 'In Progress', tasks: [] }],
-      ['done', { title: 'Done', tasks: [] }]
-    ])
+    // Initialize columns from configuration
+    this.columns = new Map()
+    for (const colConfig of this.columnConfig) {
+      this.columns.set(colConfig.id, {
+        title: colConfig.title,
+        tags: colConfig.tags,
+        matchChecked: colConfig.matchChecked || false,
+        matchUnchecked: colConfig.matchUnchecked || false,
+        tasks: []
+      })
+    }
 
+    // Organize tasks into columns based on tags and checked state
     for (const task of this.tasks) {
-      if (task.checked) {
-        this.columns.get('done').tasks.push(task)
-      } else if (task.tags.some(tag => ['in-progress', 'doing', 'wip'].includes(tag))) {
-        this.columns.get('in-progress').tasks.push(task)
-      } else {
-        this.columns.get('todo').tasks.push(task)
+      let assigned = false
+
+      for (const [columnId, column] of this.columns) {
+        const matchesCheckedState =
+          (column.matchChecked && task.checked) ||
+          (column.matchUnchecked && !task.checked) ||
+          (!column.matchChecked && !column.matchUnchecked)
+
+        const matchesTags = task.tags.some(tag => column.tags.includes(tag))
+
+        if (matchesCheckedState && (matchesTags || column.tags.length === 0)) {
+          column.tasks.push(task)
+          assigned = true
+          break // Task assigned to first matching column
+        }
+      }
+
+      // If no column matched, add to first column (default fallback)
+      if (!assigned && this.columns.size > 0) {
+        const firstColumn = this.columns.values().next().value
+        firstColumn.tasks.push(task)
       }
     }
   }
@@ -4228,7 +4348,133 @@ Enter                Edit task in text editor
 Delete               Delete selected task
 ```
 
-### 11.7 CSS Styling
+### 11.7 Column Configuration
+
+Users can configure custom Kanban columns through the settings dialog (Cmd/Ctrl + Shift + K).
+
+**Configuration UI Mockup:**
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  Kanban Column Configuration                     [✕ Close] │
+├───────────────────────────────────────────────────────────┤
+│                                                             │
+│  Columns (drag to reorder):                                │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐  │
+│  │ ☰ Todo                                   [Edit] [✕] │  │
+│  │   Tags: todo                                         │  │
+│  │   Match: ☑ Unchecked items only                     │  │
+│  └─────────────────────────────────────────────────────┘  │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐  │
+│  │ ☰ In Progress                            [Edit] [✕] │  │
+│  │   Tags: in-progress, doing, wip                      │  │
+│  │   Match: ☑ Unchecked items only                     │  │
+│  └─────────────────────────────────────────────────────┘  │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐  │
+│  │ ☰ Done                                   [Edit] [✕] │  │
+│  │   Tags: done                                         │  │
+│  │   Match: ☑ Checked items only                       │  │
+│  └─────────────────────────────────────────────────────┘  │
+│                                                             │
+│  [+ Add Column]                                             │
+│                                                             │
+│  ─────────────────────────────────────────────────────────│
+│                                    [Reset] [Cancel] [Save] │
+└───────────────────────────────────────────────────────────┘
+```
+
+**Column Edit Dialog:**
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  Edit Column                                     [✕ Close] │
+├───────────────────────────────────────────────────────────┤
+│                                                             │
+│  Column Title:                                              │
+│  [In Progress....................................]          │
+│                                                             │
+│  Column ID (for internal use):                             │
+│  [in-progress..................................]          │
+│                                                             │
+│  Tags (comma-separated):                                    │
+│  [in-progress, doing, wip.....................]          │
+│                                                             │
+│  Matching Rules:                                            │
+│  ☑ Match items with tags                                   │
+│  ☑ Match unchecked items only                              │
+│  ☐ Match checked items only                                │
+│  ☐ Match all items (no filter)                             │
+│                                                             │
+│  Note: Items are assigned to the first matching column.    │
+│  Items with no match go to the first column by default.    │
+│                                                             │
+│  ─────────────────────────────────────────────────────────│
+│                                          [Cancel] [Save]   │
+└───────────────────────────────────────────────────────────┘
+```
+
+**Configuration Structure (JSON):**
+
+```javascript
+// Saved to IndexedDB as 'kanban_columns' setting
+[
+  {
+    id: 'todo',
+    title: 'Todo',
+    tags: ['todo'],
+    matchChecked: false,
+    matchUnchecked: true
+  },
+  {
+    id: 'in-progress',
+    title: 'In Progress',
+    tags: ['in-progress', 'doing', 'wip'],
+    matchChecked: false,
+    matchUnchecked: true
+  },
+  {
+    id: 'done',
+    title: 'Done',
+    tags: ['done'],
+    matchChecked: true,
+    matchUnchecked: false
+  },
+  {
+    id: 'custom-review',  // User can add custom columns
+    title: 'Code Review',
+    tags: ['review', 'pr'],
+    matchChecked: false,
+    matchUnchecked: true
+  }
+]
+```
+
+**Matching Logic:**
+
+1. Items are assigned to columns from left to right (first match wins)
+2. An item matches a column if:
+   - It has at least one tag that's in the column's tag list, AND
+   - Its checked state matches the column's `matchChecked`/`matchUnchecked` rules
+3. If `matchChecked` and `matchUnchecked` are both false, the column accepts any checked state
+4. Unmatched items go to the first column as a fallback
+
+**Example Use Cases:**
+
+```
+# Custom workflow with Review column
+[Todo] → [In Progress] → [Review] → [Done]
+
+# Bug tracking workflow
+[Reported] → [Investigating] → [Fix in Progress] → [Testing] → [Resolved]
+
+# Content creation workflow
+[Ideas] → [Drafting] → [Editing] → [Published]
+```
+
+### 11.8 CSS Styling
 
 ```css
 .kanban-board {
@@ -4411,6 +4657,481 @@ Delete               Delete selected task
 - Team collaboration (with assignees)
 - Quick visual overview of document tasks
 - Drag-and-drop prioritization
+
+---
+
+## 11.9 Split View / Multi-Pane Layout
+
+**Flexible screen splitting for simultaneous view of different sections**
+
+The split view feature allows users to divide the editor into multiple panes, enabling simultaneous viewing and editing of different parts of the document or even different documents.
+
+### Core Functionality
+
+**Split Types:**
+1. **Vertical Split** - Side-by-side panes
+2. **Horizontal Split** - Top-and-bottom panes
+3. **Custom Grid** - Fully customizable pane arrangement
+4. **Nested Splits** - Recursive splitting for complex layouts
+
+**User Controls:**
+```
+Keyboard Shortcuts:
+Cmd/Ctrl + \           Toggle split view (vertical)
+Cmd/Ctrl + Shift + \   Toggle split view (horizontal)
+Cmd/Ctrl + Alt + \     Open split layout editor
+
+Mouse Controls:
+- Drag divider to resize panes
+- Double-click divider to reset to 50/50
+- Right-click divider for split options
+- Click pane to focus
+```
+
+### Implementation Architecture
+
+```javascript
+class SplitViewManager {
+  constructor(editor, storage) {
+    this.editor = editor
+    this.storage = storage
+    this.panes = []
+    this.layout = null  // Tree structure representing pane arrangement
+    this.activePane = null
+    this.minPaneSize = 200  // pixels
+  }
+
+  async initialize() {
+    // Load saved layout from storage
+    this.layout = await this.storage.getSetting('split_layout') || this.getDefaultLayout()
+    this.render()
+  }
+
+  getDefaultLayout() {
+    // Single pane by default
+    return {
+      type: 'leaf',
+      id: 'pane-1',
+      document: null,  // Current document
+      scrollPos: 0,
+      cursorPos: 0,
+      foldState: [],
+      headerFocus: null  // URL hash for focused header
+    }
+  }
+
+  // Split current active pane
+  splitPane(paneId, direction = 'vertical') {
+    const pane = this.findPane(paneId)
+    if (!pane || pane.type !== 'leaf') return
+
+    // Convert leaf to container with two children
+    const newPane1 = { ...pane }  // Keep existing pane data
+    const newPane2 = {
+      type: 'leaf',
+      id: this.generatePaneId(),
+      document: pane.document,  // Clone current document
+      scrollPos: pane.scrollPos,
+      cursorPos: pane.cursorPos,
+      foldState: [...pane.foldState],
+      headerFocus: pane.headerFocus
+    }
+
+    // Replace leaf with container
+    Object.assign(pane, {
+      type: 'container',
+      direction: direction,  // 'vertical' or 'horizontal'
+      ratio: 0.5,  // 50/50 split
+      children: [newPane1, newPane2]
+    })
+
+    this.render()
+    this.saveSplitLayout()
+  }
+
+  // Remove a pane and merge with sibling
+  closePane(paneId) {
+    if (this.panes.length === 1) {
+      // Can't close last pane
+      return
+    }
+
+    const parent = this.findParent(paneId)
+    if (!parent) return
+
+    // Find sibling
+    const siblings = parent.children.filter(child => child.id !== paneId)
+    if (siblings.length === 0) return
+
+    // Replace parent with sibling
+    const sibling = siblings[0]
+    const grandparent = this.findParent(parent.id)
+
+    if (grandparent) {
+      const index = grandparent.children.findIndex(c => c.id === parent.id)
+      grandparent.children[index] = sibling
+    } else {
+      // Parent is root, sibling becomes new root
+      this.layout = sibling
+    }
+
+    this.render()
+    this.saveSplitLayout()
+  }
+
+  // Navigate between panes
+  focusPane(paneId) {
+    this.activePane = paneId
+    this.highlightActivePane()
+  }
+
+  focusNextPane() {
+    const panes = this.getAllLeafPanes()
+    const currentIndex = panes.findIndex(p => p.id === this.activePane)
+    const nextIndex = (currentIndex + 1) % panes.length
+    this.focusPane(panes[nextIndex].id)
+  }
+
+  focusPreviousPane() {
+    const panes = this.getAllLeafPanes()
+    const currentIndex = panes.findIndex(p => p.id === this.activePane)
+    const prevIndex = (currentIndex - 1 + panes.length) % panes.length
+    this.focusPane(panes[prevIndex].id)
+  }
+
+  // Resize panes by dragging divider
+  startResize(dividerId, event) {
+    event.preventDefault()
+    const container = this.findContainerByDivider(dividerId)
+    const startPos = container.direction === 'vertical' ? event.clientX : event.clientY
+
+    const onMouseMove = (e) => {
+      const currentPos = container.direction === 'vertical' ? e.clientX : e.clientY
+      const delta = currentPos - startPos
+      this.updateRatio(container, delta)
+      this.render()
+    }
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      this.saveSplitLayout()
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }
+
+  updateRatio(container, delta) {
+    const totalSize = container.direction === 'vertical'
+      ? container.element.clientWidth
+      : container.element.clientHeight
+
+    const newRatio = Math.max(0.1, Math.min(0.9,
+      container.ratio + (delta / totalSize)
+    ))
+
+    container.ratio = newRatio
+  }
+
+  // Render the pane layout
+  render() {
+    const container = document.getElementById('editor-container')
+    container.innerHTML = ''
+    this.renderNode(this.layout, container)
+  }
+
+  renderNode(node, parentElement) {
+    if (node.type === 'leaf') {
+      // Render editor pane
+      const paneEl = this.createPaneElement(node)
+      parentElement.appendChild(paneEl)
+    } else if (node.type === 'container') {
+      // Render container with children
+      const containerEl = document.createElement('div')
+      containerEl.className = `split-container split-${node.direction}`
+      containerEl.style.display = 'flex'
+      containerEl.style.flexDirection = node.direction === 'vertical' ? 'row' : 'column'
+
+      // First child
+      const child1El = document.createElement('div')
+      child1El.className = 'split-child'
+      child1El.style.flex = node.ratio
+      this.renderNode(node.children[0], child1El)
+      containerEl.appendChild(child1El)
+
+      // Divider
+      const divider = this.createDivider(node)
+      containerEl.appendChild(divider)
+
+      // Second child
+      const child2El = document.createElement('div')
+      child2El.className = 'split-child'
+      child2El.style.flex = 1 - node.ratio
+      this.renderNode(node.children[1], child2El)
+      containerEl.appendChild(child2El)
+
+      parentElement.appendChild(containerEl)
+    }
+  }
+
+  createPaneElement(pane) {
+    const paneEl = document.createElement('div')
+    paneEl.className = 'editor-pane'
+    paneEl.id = pane.id
+    paneEl.dataset.paneId = pane.id
+
+    // Create editor instance for this pane
+    const editorInstance = this.editor.createInstance({
+      document: pane.document,
+      scrollPos: pane.scrollPos,
+      cursorPos: pane.cursorPos,
+      foldState: pane.foldState,
+      headerFocus: pane.headerFocus
+    })
+
+    paneEl.appendChild(editorInstance.element)
+
+    // Focus handler
+    paneEl.addEventListener('click', () => {
+      this.focusPane(pane.id)
+    })
+
+    return paneEl
+  }
+
+  createDivider(container) {
+    const divider = document.createElement('div')
+    divider.className = `pane-divider divider-${container.direction}`
+    divider.style.cursor = container.direction === 'vertical' ? 'col-resize' : 'row-resize'
+    divider.style.width = container.direction === 'vertical' ? '4px' : '100%'
+    divider.style.height = container.direction === 'horizontal' ? '4px' : '100%'
+    divider.style.background = 'var(--border)'
+    divider.style.transition = 'background 0.2s'
+
+    divider.addEventListener('mousedown', (e) => {
+      this.startResize(divider.id, e)
+    })
+
+    divider.addEventListener('dblclick', () => {
+      container.ratio = 0.5
+      this.render()
+      this.saveSplitLayout()
+    })
+
+    return divider
+  }
+
+  // Helper methods
+  findPane(paneId, node = this.layout) {
+    if (node.id === paneId) return node
+    if (node.type === 'container') {
+      for (const child of node.children) {
+        const found = this.findPane(paneId, child)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  findParent(paneId, node = this.layout, parent = null) {
+    if (node.id === paneId) return parent
+    if (node.type === 'container') {
+      for (const child of node.children) {
+        const found = this.findParent(paneId, child, node)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  getAllLeafPanes(node = this.layout, result = []) {
+    if (node.type === 'leaf') {
+      result.push(node)
+    } else if (node.type === 'container') {
+      for (const child of node.children) {
+        this.getAllLeafPanes(child, result)
+      }
+    }
+    return result
+  }
+
+  generatePaneId() {
+    return `pane-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  }
+
+  async saveSplitLayout() {
+    await this.storage.setSetting('split_layout', this.layout)
+  }
+}
+```
+
+### Visual Layout Editor
+
+**Grid Layout Editor UI:**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Split Layout Editor                           [✕ Close] │
+├─────────────────────────────────────────────────────────┤
+│                                                           │
+│  Quick Layouts:                                           │
+│  [Single] [2 Col] [2 Row] [3 Col] [Grid] [Custom]       │
+│                                                           │
+│  Current Layout Preview:                                  │
+│  ┌─────────────────────────────────────┐                 │
+│  │  ┌──────────┬──────────┐            │                 │
+│  │  │ Pane 1   │ Pane 2   │            │                 │
+│  │  │  (50%)   │  (50%)   │            │                 │
+│  │  │  [✕]     │  [✕]     │            │                 │
+│  │  └──────────┴──────────┘            │                 │
+│  └─────────────────────────────────────┘                 │
+│                                                           │
+│  Pane Options:                                            │
+│  Pane 1: [Document: notes.txt ▼] [Focus: Budget ▼]      │
+│  Pane 2: [Document: notes.txt ▼] [Focus: Tasks ▼]       │
+│                                                           │
+│  Advanced:                                                │
+│  ☑ Sync scrolling between panes                          │
+│  ☐ Lock pane ratios                                      │
+│  ☑ Remember layout per document                          │
+│  ☐ Show minimap in each pane                             │
+│                                                           │
+│  ─────────────────────────────────────────────────────  │
+│                                    [Reset] [Cancel] [Apply] │
+└─────────────────────────────────────────────────────────┘
+```
+
+### CSS Styling
+
+```css
+.split-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.split-container.split-vertical {
+  flex-direction: row;
+}
+
+.split-container.split-horizontal {
+  flex-direction: column;
+}
+
+.split-child {
+  overflow: hidden;
+  position: relative;
+}
+
+.pane-divider {
+  background: var(--border);
+  transition: background 0.2s;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.pane-divider:hover {
+  background: var(--accent);
+}
+
+.pane-divider.divider-vertical {
+  width: 4px;
+  cursor: col-resize;
+}
+
+.pane-divider.divider-horizontal {
+  height: 4px;
+  cursor: row-resize;
+}
+
+.editor-pane {
+  width: 100%;
+  height: 100%;
+  border: 2px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.editor-pane.active {
+  border-color: var(--accent);
+}
+
+.editor-pane.inactive {
+  opacity: 0.8;
+}
+```
+
+### Use Cases
+
+1. **Reference While Writing**
+   - Split view with documentation in one pane, notes in another
+   - Compare two sections of the same document
+
+2. **Kanban + Text View**
+   - Kanban board in left pane
+   - Text editor in right pane
+   - Drag tasks while seeing markdown update in real-time
+
+3. **Multi-Document Editing**
+   - Different documents in different panes
+   - Copy/paste between documents
+   - Unified search across all open panes
+
+4. **Code + Documentation**
+   - Code block in one pane with HTML preview
+   - Documentation in another pane
+
+5. **Comparison Mode**
+   - Two versions of the same section
+   - Before/after edits
+   - Encrypted vs decrypted view
+
+### Keyboard Shortcuts
+
+```
+Split Management:
+Cmd/Ctrl + \              Split vertically
+Cmd/Ctrl + Shift + \      Split horizontally
+Cmd/Ctrl + W              Close current pane
+Cmd/Ctrl + Alt + \        Open layout editor
+
+Pane Navigation:
+Cmd/Ctrl + 1-9            Jump to pane number
+Cmd/Ctrl + [              Focus previous pane
+Cmd/Ctrl + ]              Focus next pane
+Alt + Click               Focus clicked pane
+
+Pane Sizing:
+Cmd/Ctrl + Alt + =        Increase pane size
+Cmd/Ctrl + Alt + -        Decrease pane size
+Cmd/Ctrl + Alt + 0        Reset to equal sizes
+
+View Synchronization:
+Cmd/Ctrl + Shift + S      Toggle sync scrolling
+Cmd/Ctrl + Shift + L      Link pane documents
+```
+
+### Features
+
+**Advanced Capabilities:**
+- **Persistent Layouts**: Layouts saved per document
+- **Synchronized Scrolling**: Option to sync scroll position across panes
+- **Linked Editing**: Changes in one pane update linked panes instantly
+- **Different Views**: Mix text, kanban, and preview modes in different panes
+- **Zoom Independent**: Each pane can have different font sizes
+- **Fold State Independent**: Fold state tracked per pane
+- **Drag Between Panes**: Drag text/headers between panes to move/copy
+- **Minimap Per Pane**: Optional minimap for each pane
+- **Pane Swap**: Drag pane headers to rearrange layout
+- **Breadcrumb Navigation**: Show current header path in pane header
+
+**Integration with Other Features:**
+- Each pane can show different parts of the same document
+- Each pane can show entirely different documents
+- Panes can show different views (text vs kanban vs preview)
+- Inline computations update across all panes showing same document
+- Encryption status shown per pane
+- GitHub sync status applies to all open documents across panes
 
 ---
 
@@ -4803,8 +5524,11 @@ Cmd/Ctrl + 0          Reset font size
 - [ ] Settings panel
 - [ ] Dark mode
 - [ ] Responsive design
+- [ ] Split view / multi-pane layout
+- [ ] Pane management (split, close, resize, navigate)
+- [ ] Layout persistence and presets
 
-**Deliverable**: Production-ready user interface
+**Deliverable**: Production-ready user interface with flexible multi-pane editing
 
 ---
 
@@ -4932,6 +5656,124 @@ Cmd/Ctrl + 0          Reset font size
 - [ ] Plugin system
 
 **Deliverable**: Additional polish and power-user features
+
+---
+
+### 7.1 Phase Execution Strategy: Sequential vs Parallel
+
+**Critical Sequential Phases** (must be completed in order):
+
+These phases build on each other and MUST be completed sequentially:
+
+```
+Phase 1 (Foundation)
+  ↓ REQUIRED
+Phase 2 (Markdown Parsing)
+  ↓ REQUIRED
+Phase 3 (Folding System)
+  ↓ REQUIRED
+Phase 4 (Performance)
+```
+
+**Rationale:**
+- Phase 1 provides the basic editor and storage infrastructure
+- Phase 2 builds the markdown parser needed by all other features
+- Phase 3 implements the core folding feature on top of the parser
+- Phase 4 optimizes the foundation before adding more complexity
+
+**Parallel-Ready Phases** (can be developed simultaneously after Phase 4):
+
+After completing Phases 1-4, the following phases can be executed in parallel by different developers/Claude instances:
+
+```
+                    Phase 4 (Performance)
+                            ↓
+        ┌───────────────────┼───────────────────┬───────────────┐
+        │                   │                   │               │
+    Phase 5              Phase 6            Phase 7         Phase 8
+    (Polish)         (Rich Content)    (Search/Export)    (Themes)
+        │                   │                   │               │
+        └───────────────────┴───────────────────┴───────────────┘
+                            ↓
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+    Phase 9              Phase 10           Phase 11
+  (Computation)         (Kanban)        (GitHub/Encryption)
+        │                   │                   │
+        └───────────────────┴───────────────────┘
+                            ↓
+                        Phase 12
+                        (Polish)
+```
+
+**Parallel Phase Groups:**
+
+**Group A (UI/UX Layer)** - Can run in parallel:
+- Phase 5: Polish & UX
+- Phase 8: Themes & Customization
+
+**Group B (Content Features)** - Can run in parallel:
+- Phase 6: Rich Content Support
+- Phase 7: Search, Navigation & Export
+
+**Group C (Advanced Features)** - Can run in parallel after Groups A+B:
+- Phase 9: Inline Computation & Restructuring
+- Phase 10: Kanban View & Content Management
+- Phase 11: GitHub Integration & Advanced Encryption
+
+**Group D (Final Polish)** - Must run after all others:
+- Phase 12: Polish & Additional Features
+
+**Dependency Matrix:**
+
+| Phase | Depends On | Blocks | Can Parallel With |
+|-------|-----------|---------|-------------------|
+| 1 | None | 2 | None |
+| 2 | 1 | 3 | None |
+| 3 | 2 | 4 | None |
+| 4 | 3 | 5,6,7,8 | None |
+| 5 | 4 | 12 | 6,7,8 |
+| 6 | 4 | 9,10 | 5,7,8 |
+| 7 | 4 | 9,10,11 | 5,6,8 |
+| 8 | 4 | 12 | 5,6,7 |
+| 9 | 4,6 | 12 | 10,11 |
+| 10 | 4,6 | 12 | 9,11 |
+| 11 | 4,7 | 12 | 9,10 |
+| 12 | 5,8,9,10,11 | None | None |
+
+**Integration Points:**
+
+When working in parallel, teams should coordinate on these shared files:
+
+1. **Phase 5 & 8** share: `styles/theme.css`, `components/Settings.js`
+2. **Phase 6 & 7** share: `core/Parser.js`, `core/Document.js`
+3. **Phase 9 & 10** share: `components/Editor.js`, `core/Parser.js`
+4. **Phase 7 & 11** share: `storage/Export.js`, `storage/Import.js`
+
+**Recommended Parallelization Strategy:**
+
+For maximum efficiency with Claude Code (or multiple developers):
+
+**Iteration 1** (Sequential):
+- Single instance: Phases 1 → 2 → 3 → 4
+
+**Iteration 2** (4 parallel instances):
+- Instance 1: Phase 5 (Polish & UX)
+- Instance 2: Phase 6 (Rich Content)
+- Instance 3: Phase 7 (Search/Export)
+- Instance 4: Phase 8 (Themes)
+
+**Iteration 3** (3 parallel instances):
+- Instance 1: Phase 9 (Computation)
+- Instance 2: Phase 10 (Kanban)
+- Instance 3: Phase 11 (GitHub/Encryption)
+
+**Iteration 4** (Sequential):
+- Single instance: Phase 12 (Final Polish & Integration)
+
+**Total estimated time:**
+- Sequential: ~12 development cycles
+- With parallelization: ~7 development cycles (42% time savings)
 
 ---
 
@@ -5731,6 +6573,247 @@ function decodeHeaderPath(encoded) {
    - Header with special characters (/, ?, #)
    - Very large image (10MB+)
    - Extremely long line (10K+ chars)
+
+### Browser Automation Testing with Claude Code Chrome Plugin
+
+The Claude Code Chrome plugin enables automated browser testing directly from Claude Code sessions. This is particularly useful for testing web applications like FoldingText that run entirely in the browser.
+
+**Setup:**
+
+1. Install the Claude Code Chrome plugin (available in Chrome Web Store)
+2. Configure the plugin to connect to your Claude Code session
+3. Ensure the application is running locally or on GitHub Pages
+
+**Testing Workflow:**
+
+```bash
+# Start local development server (if testing locally)
+npx http-server . -p 8080
+
+# Or test against GitHub Pages deployment
+# https://yourusername.github.io/quick-notes/
+# https://yourusername.github.io/quick-notes/pr-42/ (for PR previews)
+```
+
+**Automated Test Scenarios:**
+
+1. **Performance Testing**
+   ```javascript
+   // Claude can execute this in Chrome via the plugin
+   // Test: Load large document and measure performance
+
+   - Navigate to app
+   - Create new document
+   - Paste 50,000 lines of CSV data
+   - Measure: Time to first render
+   - Measure: Scrolling FPS (should be 60fps)
+   - Measure: Typing latency (should be <16ms)
+   - Verify: No JavaScript errors in console
+   ```
+
+2. **Folding Interaction Testing**
+   ```javascript
+   // Test: Fold/unfold operations work correctly
+
+   - Create multi-level nested document
+   - Fold header level 1
+   - Verify: Child headers are hidden
+   - Unfold header level 1
+   - Verify: Child headers are visible
+   - Select text across fold boundary
+   - Toggle fold
+   - Verify: Selection updates correctly
+   ```
+
+3. **Cross-Browser Compatibility**
+   ```javascript
+   // Run same tests across Chrome, Firefox, Safari
+
+   - Test with Chrome plugin: Full feature set
+   - Test with Firefox: IndexedDB compatibility
+   - Test with Safari: WebKit-specific issues
+   - Verify: All features work consistently
+   ```
+
+4. **GitHub Pages Deployment Verification**
+   ```javascript
+   // Test: Production deployment works correctly
+
+   - Navigate to production URL
+   - Verify: App loads without errors
+   - Verify: Service worker registers (if using PWA)
+   - Verify: IndexedDB persists across sessions
+   - Test offline mode (if implemented)
+
+   // Test: PR preview deployment
+   - Navigate to PR preview URL (/pr-42/)
+   - Verify: Preview loads with PR changes
+   - Verify: Doesn't interfere with production data
+   ```
+
+5. **Rich Content Testing**
+   ```javascript
+   // Test: Image upload and attachments
+
+   - Drag & drop image file
+   - Verify: Image appears in editor
+   - Resize image using handles
+   - Verify: Resize works smoothly
+   - Save document
+   - Reload page
+   - Verify: Image persists with correct size
+   - Export document
+   - Import in clean session
+   - Verify: Image included in import
+   ```
+
+6. **Encryption & Export Testing**
+   ```javascript
+   // Test: Encryption workflow end-to-end
+
+   - Create document with sensitive content
+   - Mark header as encrypted (🔒)
+   - Enter password
+   - Export document
+   - Open in new incognito window
+   - Import document
+   - Enter correct password
+   - Verify: Content decrypts correctly
+   - Try wrong password
+   - Verify: Silent failure (no content revealed)
+   ```
+
+7. **GitHub Sync Testing**
+   ```javascript
+   // Test: Auto-sync to GitHub works
+
+   - Configure GitHub integration
+   - Enter token and repo details
+   - Set sync interval to 30 seconds
+   - Make edits to document
+   - Wait 30 seconds
+   - Verify: Changes pushed to GitHub
+   - Check GitHub commit history
+   - Verify: Commit message is descriptive
+   - Verify: File format is .txt
+   ```
+
+8. **Kanban View Testing**
+   ```javascript
+   // Test: Kanban board functionality
+
+   - Create document with tasks:
+     - [ ] Task 1 #todo
+     - [ ] Task 2 #in-progress
+     - [x] Task 3 #done
+   - Toggle Kanban view (Cmd+K)
+   - Verify: Tasks appear in correct columns
+   - Drag task from "Todo" to "In Progress"
+   - Verify: Task updates with #in-progress tag
+   - Toggle back to text view
+   - Verify: Changes reflected in markdown
+   ```
+
+9. **Custom Column Configuration Testing**
+   ```javascript
+   // Test: Kanban column configuration
+
+   - Open Kanban settings (Cmd+Shift+K)
+   - Add custom column "Code Review"
+   - Set tags: review, pr
+   - Set matching: unchecked items only
+   - Save configuration
+   - Create task: - [ ] Review PR #review
+   - Toggle Kanban view
+   - Verify: Task appears in "Code Review" column
+   ```
+
+10. **Inline Computation Testing**
+    ```javascript
+    // Test: Variable computation works
+
+    - Create header "# Budget"
+    - Add lines:
+      $price = 29.99
+      $quantity = 5
+      Total: ${ $price * $quantity }
+    - Verify: "Total: → 149.95" appears
+    - Change $quantity to 10
+    - Verify: Total updates to → 299.90
+    - Test scope inheritance with nested headers
+    ```
+
+**Benefits of Chrome Plugin Testing:**
+
+1. **Automated Regression Testing**: Run full test suite on every PR
+2. **Cross-Browser Testing**: Test in multiple browsers programmatically
+3. **Performance Monitoring**: Measure FPS, latency, load times
+4. **Screenshot Comparison**: Visual regression testing
+5. **Integration with CI/CD**: Run tests in GitHub Actions
+6. **Real Browser Environment**: Test with actual DOM, IndexedDB, WebGL
+7. **Interactive Debugging**: Claude can inspect DOM, console logs, network requests
+
+**CI/CD Integration Example:**
+
+```yaml
+# .github/workflows/browser-tests.yml
+name: Browser Tests
+
+on: [pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Start local server
+        run: |
+          npx http-server . -p 8080 &
+          sleep 5
+
+      - name: Run Claude Code browser tests
+        uses: anthropic/claude-code-chrome-action@v1
+        with:
+          test_script: .claude/tests/browser-tests.md
+          app_url: http://localhost:8080
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: test-results/
+```
+
+**Test Script Format (.claude/tests/browser-tests.md):**
+
+```markdown
+# FoldingText Browser Tests
+
+## Test 1: Performance
+- Navigate to http://localhost:8080
+- Create new document
+- Paste large CSV (tests/fixtures/50k-lines.csv)
+- Measure FPS while scrolling
+- Assert: FPS >= 55
+
+## Test 2: Folding
+- Create nested headers
+- Fold level 1 header
+- Assert: Child content hidden
+- Unfold
+- Assert: Child content visible
+
+... more tests ...
+```
+
+**Expected Outcomes:**
+
+- All browser tests pass in CI/CD pipeline
+- Performance metrics tracked over time
+- Visual regressions caught before merge
+- Cross-browser compatibility verified automatically
+- Faster development cycles with automated testing
 
 ---
 
