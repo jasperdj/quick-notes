@@ -58,6 +58,8 @@ quick-notes/
 │   │   ├── import.js      # Import handler
 │   │   ├── richcontent.js # Images, attachments, tables
 │   │   ├── themes.js      # Theme management
+│   │   ├── compute.js     # Inline variable computation
+│   │   ├── restructure.js # Drag-drop document restructuring
 │   │   └── utils.js       # Utility functions
 │   └── workers/
 │       ├── parser.worker.js    # Background parsing
@@ -129,6 +131,19 @@ quick-notes/
 - Theme persistence
 - CSS variable manipulation
 - Import/export themes
+
+**Compute Module** (`compute.js`)
+- Inline JavaScript variable evaluation
+- Header-scoped variable system
+- Expression parsing and computation
+- Reactive updates when variables change
+- Live result display
+
+**Restructure Module** (`restructure.js`)
+- Visual document structure view
+- Drag-and-drop header reordering
+- Collapsible tree visualization
+- Batch operations (move sections, merge, split)
 
 ---
 
@@ -1147,9 +1162,800 @@ Ship with several quality themes:
 
 ---
 
-## 9. Performance Optimizations
+## 9. Inline Variable Computation
 
-### 9.1 Selection-Aware Virtual Scrolling
+### 9.1 The Problem
+Users often need to:
+- Perform quick calculations within notes
+- Maintain dynamic values that update throughout the document
+- Do simple data analysis without leaving the note-taking context
+- Reference values across different parts of their document
+
+### 9.2 Proposed Syntax
+
+After evaluating several options, here's the recommended syntax:
+
+**Variable Definition:**
+```
+$variable = expression
+```
+
+**Variable Reference:**
+```
+$variable
+```
+
+**Display Format:**
+```
+$number = 1 + 3             → 4
+$anothernumber = $number + 4 → 8
+Total: $anothernumber        → Total: 8
+```
+
+**Why this syntax:**
+- `$` prefix is familiar (bash, PHP, template languages)
+- Clean and minimal
+- Easy to parse with regex
+- Doesn't conflict with markdown syntax
+- Intuitive for both definition and reference
+
+### 9.3 Alternative Syntax Considered
+
+**Option A: Brace syntax (spreadsheet-like)**
+```
+{= 1 + 3}
+{number = 1 + 3}
+{number}
+```
+❌ More verbose, less clean
+
+**Option B: Double braces (template-style)**
+```
+{{number = 1 + 3}}
+{{number}}
+```
+❌ Looks like template syntax, might be confusing
+
+**Option C: Colon prefix**
+```
+:number = 1 + 3
+:number
+```
+❌ Less familiar, could conflict with other markdown extensions
+
+**Winner: Dollar sign prefix** ✓
+
+### 9.4 Scoping Rules
+
+Variables are scoped by header hierarchy:
+
+```markdown
+# Project Budget
+
+$hourlyRate = 150
+$hours = 40
+$subtotal = $hourlyRate * $hours → 6000
+
+## Phase 1
+$phaseHours = 20
+$phaseCost = $hourlyRate * $phaseHours → 3000
+
+### Task A
+$taskHours = 5
+$taskCost = $hourlyRate * $taskHours → 750
+
+## Phase 2
+$phaseHours = 15  // Shadows Phase 1's $phaseHours
+$phaseCost = $hourlyRate * $phaseHours → 2250
+
+# Summary
+Total hours: $hours → 40
+// $phaseHours is NOT accessible here (scoped to child headers)
+```
+
+**Scoping Rules:**
+1. Variables are accessible in the header where they're defined
+2. Variables are accessible in all nested subheaders
+3. Child header variables are NOT accessible in parent headers
+4. Variables can be shadowed in child headers (local scope)
+5. Variables are evaluated top-to-bottom within their scope
+
+### 9.5 Implementation
+
+```javascript
+class ComputeEngine {
+  constructor(document) {
+    this.document = document
+    this.scopes = new Map() // headerPath -> { variables, expressions }
+  }
+
+  parseDocument() {
+    // Find all variable definitions and references
+    const varPattern = /\$(\w+)\s*=\s*([^→\n]+)/g
+    const refPattern = /\$(\w+)/g
+
+    for (const [lineNum, line] of this.document.lines.entries()) {
+      const headerPath = this.getHeaderPath(lineNum)
+
+      // Parse variable definitions
+      let match
+      while ((match = varPattern.exec(line.text)) !== null) {
+        const [full, varName, expression] = match
+        this.defineVariable(headerPath, varName, expression.trim(), lineNum)
+      }
+    }
+
+    // Evaluate all variables
+    this.evaluateAll()
+  }
+
+  defineVariable(scope, name, expression, lineNumber) {
+    if (!this.scopes.has(scope)) {
+      this.scopes.set(scope, { variables: new Map(), expressions: [] })
+    }
+
+    const scopeData = this.scopes.get(scope)
+    scopeData.variables.set(name, {
+      expression: expression,
+      value: null,
+      lineNumber: lineNumber,
+      dependencies: this.extractDependencies(expression)
+    })
+  }
+
+  extractDependencies(expression) {
+    const deps = []
+    const refPattern = /\$(\w+)/g
+    let match
+    while ((match = refPattern.exec(expression)) !== null) {
+      deps.push(match[1])
+    }
+    return deps
+  }
+
+  evaluateAll() {
+    // Topological sort for dependency resolution
+    const evaluated = new Set()
+
+    for (const [scope, data] of this.scopes) {
+      for (const [varName, varData] of data.variables) {
+        this.evaluateVariable(scope, varName, evaluated)
+      }
+    }
+  }
+
+  evaluateVariable(scope, varName, evaluated = new Set()) {
+    const key = `${scope}:${varName}`
+    if (evaluated.has(key)) return
+
+    const varData = this.getVariableData(scope, varName)
+    if (!varData) return
+
+    // Evaluate dependencies first
+    for (const dep of varData.dependencies) {
+      if (!evaluated.has(`${scope}:${dep}`)) {
+        this.evaluateVariable(scope, dep, evaluated)
+      }
+    }
+
+    // Replace variable references with values
+    let expression = varData.expression
+    for (const dep of varData.dependencies) {
+      const depValue = this.resolveVariable(scope, dep)
+      if (depValue !== null) {
+        expression = expression.replace(
+          new RegExp(`\\$${dep}`, 'g'),
+          depValue
+        )
+      }
+    }
+
+    // Safely evaluate expression
+    try {
+      varData.value = this.safeEval(expression)
+      evaluated.add(key)
+
+      // Update display
+      this.updateDisplay(varData.lineNumber, varData.value)
+    } catch (e) {
+      varData.value = `Error: ${e.message}`
+    }
+  }
+
+  resolveVariable(scope, varName) {
+    // Look in current scope and parent scopes
+    const scopeParts = scope.split('/')
+
+    for (let i = scopeParts.length; i >= 0; i--) {
+      const checkScope = scopeParts.slice(0, i).join('/')
+      const scopeData = this.scopes.get(checkScope)
+
+      if (scopeData?.variables.has(varName)) {
+        return scopeData.variables.get(varName).value
+      }
+    }
+
+    return null
+  }
+
+  safeEval(expression) {
+    // Whitelist safe operations
+    const allowedPattern = /^[\d\s+\-*/(). ]+$/
+    if (!allowedPattern.test(expression)) {
+      throw new Error('Expression contains invalid characters')
+    }
+
+    // Use Function constructor for safer eval
+    return new Function(`return ${expression}`)()
+  }
+
+  updateDisplay(lineNumber, value) {
+    // Find the → symbol and update the display value
+    const line = this.document.lines[lineNumber]
+    const arrowIndex = line.text.indexOf('→')
+
+    if (arrowIndex === -1) {
+      // Add result display
+      line.text += ` → ${this.formatValue(value)}`
+    } else {
+      // Update existing result
+      line.text = line.text.substring(0, arrowIndex) + `→ ${this.formatValue(value)}`
+    }
+
+    // Trigger re-render
+    this.document.renderer.updateLine(lineNumber)
+  }
+
+  formatValue(value) {
+    if (typeof value === 'number') {
+      // Format numbers nicely
+      return value.toLocaleString('en-US', {
+        maximumFractionDigits: 2
+      })
+    }
+    return String(value)
+  }
+
+  onChange(lineNumber) {
+    // When a variable definition changes, re-evaluate affected variables
+    const headerPath = this.getHeaderPath(lineNumber)
+    const scopeData = this.scopes.get(headerPath)
+
+    if (scopeData) {
+      // Find variables that depend on changed variables
+      const changedVars = this.getChangedVariables(lineNumber)
+
+      // Re-evaluate dependent variables
+      for (const varName of changedVars) {
+        this.evaluateVariable(headerPath, varName, new Set())
+      }
+
+      // Also re-evaluate variables in child scopes
+      this.reevaluateChildScopes(headerPath)
+    }
+  }
+}
+```
+
+### 9.6 UI/UX
+
+**Live Evaluation:**
+```
+As you type:
+$tax = 0.08               → 0.08  (appears immediately)
+$total = 100 + ($tax * 100 → (evaluating...)
+$total = 100 + ($tax * 100) → 108 (updates when complete)
+```
+
+**Visual Indicators:**
+- Variable definitions: Subtle highlight on `$varName =`
+- Result values: Dimmed color for `→ result`
+- Errors: Red text for invalid expressions
+- References: Underline on hover, click to jump to definition
+
+**Error Handling:**
+```
+$undefined = $missingVar + 1 → Error: $missingVar not defined
+$invalid = 5 / 0             → Error: Division by zero
+$bad = console.log('hack')   → Error: Invalid expression
+```
+
+### 9.7 Advanced Features
+
+**Arrays and Data:**
+```
+$data = [10, 20, 30, 40, 50]
+$sum = $data.reduce((a,b) => a+b, 0) → 150
+$avg = $sum / $data.length            → 30
+```
+
+**Date Calculations:**
+```
+$today = new Date()
+$tomorrow = new Date($today.getTime() + 86400000)
+$daysTilDeadline = Math.ceil(($deadline - $today) / 86400000)
+```
+
+**String Operations:**
+```
+$name = "John"
+$greeting = `Hello, ${$name}!` → Hello, John!
+```
+
+### 9.8 Performance Considerations
+
+- **Lazy evaluation**: Only evaluate visible variables
+- **Caching**: Cache computed values, only recompute on change
+- **Debouncing**: Debounce re-evaluation during typing
+- **Dependency tracking**: Only re-evaluate affected variables
+- **Scope isolation**: Each header scope is independent
+
+### 9.9 Use Cases
+
+**1. Financial Planning:**
+```markdown
+# Budget 2024
+$income = 8000
+$rent = 2000
+$utilities = 300
+$food = 600
+$savings = $income - $rent - $utilities - $food → 5100
+Savings rate: ($savings / $income * 100 → 63.75%)
+```
+
+**2. Project Planning:**
+```markdown
+# Website Project
+$hourlyRate = 150
+$designHours = 20
+$devHours = 60
+$testingHours = 10
+$totalCost = ($designHours + $devHours + $testingHours) * $hourlyRate → 13,500
+```
+
+**3. Data Analysis:**
+```markdown
+# Sales Report
+$q1Sales = 45000
+$q2Sales = 52000
+$q3Sales = 48000
+$q4Sales = 61000
+$yearTotal = $q1Sales + $q2Sales + $q3Sales + $q4Sales → 206,000
+$avgQuarter = $yearTotal / 4 → 51,500
+```
+
+---
+
+## 10. Document Restructuring
+
+### 10.1 The Problem
+
+Over time, documents become chaotic:
+- Headers are out of order
+- Related sections are far apart
+- Nesting levels are inconsistent
+- Hard to see overall structure at a glance
+- Manual cut/paste is tedious and error-prone
+
+### 10.2 Solution: Visual Restructuring Mode
+
+A dedicated mode that shows document structure as a draggable tree, allowing easy reorganization.
+
+### 10.3 UI Design
+
+**Trigger:**
+- Keyboard: `Cmd/Ctrl + R` (Restructure)
+- Menu: Document → Restructure
+- Button in toolbar
+
+**Restructure Mode View:**
+```
+┌──────────────────────────────────────────────────────────┐
+│  Document Structure                          [Done] [✕]  │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  ☰ # Project Overview                    [↑][↓][→][←]  │
+│    ├─ ☰ ## Goals                         [↑][↓][→][←]  │
+│    ├─ ☰ ## Timeline                      [↑][↓][→][←]  │
+│    └─ ☰ ## Budget                        [↑][↓][→][←]  │
+│        └─ ☰ ### Q1 Budget                [↑][↓][→][←]  │
+│                                                          │
+│  ☰ # Technical Specs                     [↑][↓][→][←]  │
+│    ├─ ☰ ## Architecture                  [↑][↓][→][←]  │
+│    ├─ ☰ ## API Design                    [↑][↓][→][←]  │
+│    └─ ☰ ## Database Schema               [↑][↓][→][←]  │
+│                                                          │
+│  ☰ # Implementation                      [↑][↓][→][←]  │
+│    ├─ ☰ ## Phase 1                       [↑][↓][→][←]  │
+│    └─ ☰ ## Phase 2                       [↑][↓][→][←]  │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Features:**
+- **Drag & Drop**: Grab any header and drag to new position
+- **Arrow buttons**: Fine-grained movement (up/down/indent/outdent)
+- **Visual feedback**: Drop zone highlights, indentation guides
+- **Collapse/Expand**: Click `☰` to hide children
+- **Preview**: Hover shows content preview
+
+### 10.4 Drag & Drop Behavior
+
+**Moving sections:**
+```
+Before:                      After drag "Budget" below "Timeline":
+# Overview                   # Overview
+  ## Goals                     ## Goals
+  ## Budget    ← drag          ## Timeline
+  ## Timeline                  ## Budget
+```
+
+**Changing nesting:**
+```
+Before:                      After dragging "API Design" right (indent):
+# Technical                  # Technical
+  ## Architecture              ## Architecture
+  ## API Design  ← drag          ### API Design  (now nested)
+```
+
+**Constraints:**
+- Can't move a parent inside its own child (prevent loops)
+- Can't outdent beyond level 1 (# stays as #, not bare text)
+- Moving a section moves all its children with it
+- Visual indicators show where drop is allowed
+
+### 10.5 Implementation
+
+```javascript
+class RestructureManager {
+  constructor(document) {
+    this.document = document
+    this.structure = []
+    this.mode = 'normal' // or 'restructure'
+  }
+
+  enterRestructureMode() {
+    // Parse document structure
+    this.structure = this.parseStructure()
+
+    // Show restructure UI
+    this.renderStructureView()
+
+    // Set up drag handlers
+    this.initializeDragDrop()
+
+    this.mode = 'restructure'
+  }
+
+  parseStructure() {
+    const structure = []
+    const stack = [{ level: 0, children: structure }]
+
+    for (const [lineNum, line] of this.document.lines.entries()) {
+      const headerMatch = line.text.match(/^(#{1,6})\s+(.+)/)
+
+      if (headerMatch) {
+        const [, hashes, title] = headerMatch
+        const level = hashes.length
+
+        const node = {
+          id: `header-${lineNum}`,
+          lineNumber: lineNum,
+          level: level,
+          title: title,
+          content: this.getHeaderContent(lineNum),
+          children: [],
+          collapsed: false
+        }
+
+        // Find correct parent based on level
+        while (stack[stack.length - 1].level >= level) {
+          stack.pop()
+        }
+
+        stack[stack.length - 1].children.push(node)
+        stack.push(node)
+      }
+    }
+
+    return structure
+  }
+
+  getHeaderContent(startLine) {
+    // Get all content until next header of same or higher level
+    const headerLevel = this.document.lines[startLine].text.match(/^(#{1,6})/)[1].length
+    let content = []
+
+    for (let i = startLine + 1; i < this.document.lines.length; i++) {
+      const line = this.document.lines[i]
+      const match = line.text.match(/^(#{1,6})/)
+
+      if (match && match[1].length <= headerLevel) {
+        break // Hit next header of same or higher level
+      }
+
+      content.push(line.text)
+    }
+
+    return content.join('\n')
+  }
+
+  renderStructureView() {
+    const container = document.createElement('div')
+    container.className = 'restructure-modal'
+    container.innerHTML = `
+      <div class="restructure-header">
+        <h2>Document Structure</h2>
+        <div class="restructure-actions">
+          <button id="done-restructure">Done</button>
+          <button id="cancel-restructure">✕</button>
+        </div>
+      </div>
+      <div class="restructure-content">
+        <div id="structure-tree"></div>
+      </div>
+    `
+
+    document.body.appendChild(container)
+
+    // Render tree
+    this.renderTree(this.structure, document.getElementById('structure-tree'))
+
+    // Set up event handlers
+    document.getElementById('done-restructure').onclick = () => this.applyChanges()
+    document.getElementById('cancel-restructure').onclick = () => this.cancel()
+  }
+
+  renderTree(nodes, container, level = 0) {
+    for (const node of nodes) {
+      const item = document.createElement('div')
+      item.className = 'tree-item'
+      item.style.paddingLeft = `${level * 20}px`
+      item.dataset.nodeId = node.id
+      item.draggable = true
+
+      item.innerHTML = `
+        <span class="drag-handle">☰</span>
+        <span class="collapse-toggle">${node.collapsed ? '▶' : '▼'}</span>
+        <span class="header-title">${'#'.repeat(node.level)} ${node.title}</span>
+        <div class="item-actions">
+          <button class="move-up" title="Move up">↑</button>
+          <button class="move-down" title="Move down">↓</button>
+          <button class="indent" title="Indent">→</button>
+          <button class="outdent" title="Outdent">←</button>
+        </div>
+      `
+
+      container.appendChild(item)
+
+      // Render children
+      if (!node.collapsed && node.children.length > 0) {
+        this.renderTree(node.children, container, level + 1)
+      }
+
+      // Set up button handlers
+      item.querySelector('.move-up').onclick = () => this.moveUp(node)
+      item.querySelector('.move-down').onclick = () => this.moveDown(node)
+      item.querySelector('.indent').onclick = () => this.indent(node)
+      item.querySelector('.outdent').onclick = () => this.outdent(node)
+      item.querySelector('.collapse-toggle').onclick = () => this.toggleCollapse(node)
+    }
+  }
+
+  initializeDragDrop() {
+    const container = document.getElementById('structure-tree')
+    let draggedNode = null
+
+    container.addEventListener('dragstart', (e) => {
+      if (e.target.classList.contains('tree-item')) {
+        draggedNode = this.findNode(e.target.dataset.nodeId)
+        e.target.classList.add('dragging')
+      }
+    })
+
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault()
+      const afterElement = this.getDragAfterElement(container, e.clientY)
+
+      if (afterElement) {
+        afterElement.classList.add('drop-target')
+      }
+    })
+
+    container.addEventListener('drop', (e) => {
+      e.preventDefault()
+      const targetElement = e.target.closest('.tree-item')
+
+      if (targetElement && draggedNode) {
+        const targetNode = this.findNode(targetElement.dataset.nodeId)
+        this.moveNode(draggedNode, targetNode)
+        this.rerender()
+      }
+    })
+
+    container.addEventListener('dragend', (e) => {
+      e.target.classList.remove('dragging')
+      document.querySelectorAll('.drop-target').forEach(el =>
+        el.classList.remove('drop-target')
+      )
+    })
+  }
+
+  moveNode(sourceNode, targetNode) {
+    // Remove source from current location
+    this.removeNode(sourceNode)
+
+    // Add to new location (after target)
+    const targetParent = this.findParent(targetNode)
+    const targetIndex = targetParent.children.indexOf(targetNode)
+    targetParent.children.splice(targetIndex + 1, 0, sourceNode)
+  }
+
+  moveUp(node) {
+    const parent = this.findParent(node)
+    const index = parent.children.indexOf(node)
+
+    if (index > 0) {
+      // Swap with previous sibling
+      [parent.children[index - 1], parent.children[index]] =
+      [parent.children[index], parent.children[index - 1]]
+
+      this.rerender()
+    }
+  }
+
+  moveDown(node) {
+    const parent = this.findParent(node)
+    const index = parent.children.indexOf(node)
+
+    if (index < parent.children.length - 1) {
+      // Swap with next sibling
+      [parent.children[index], parent.children[index + 1]] =
+      [parent.children[index + 1], parent.children[index]]
+
+      this.rerender()
+    }
+  }
+
+  indent(node) {
+    const parent = this.findParent(node)
+    const index = parent.children.indexOf(node)
+
+    if (index > 0) {
+      // Move under previous sibling
+      const prevSibling = parent.children[index - 1]
+      parent.children.splice(index, 1)
+      prevSibling.children.push(node)
+      node.level++
+
+      this.updateChildrenLevels(node)
+      this.rerender()
+    }
+  }
+
+  outdent(node) {
+    if (node.level <= 1) return // Can't outdent top-level headers
+
+    const parent = this.findParent(node)
+    const grandparent = this.findParent(parent)
+    const parentIndex = grandparent.children.indexOf(parent)
+
+    // Move to grandparent level
+    const index = parent.children.indexOf(node)
+    parent.children.splice(index, 1)
+    grandparent.children.splice(parentIndex + 1, 0, node)
+    node.level--
+
+    this.updateChildrenLevels(node)
+    this.rerender()
+  }
+
+  applyChanges() {
+    // Rebuild document based on new structure
+    const newLines = []
+
+    const flatten = (nodes) => {
+      for (const node of nodes) {
+        // Add header line
+        newLines.push({
+          text: `${'#'.repeat(node.level)} ${node.title}`,
+          lineNumber: newLines.length
+        })
+
+        // Add content
+        if (node.content) {
+          for (const line of node.content.split('\n')) {
+            newLines.push({
+              text: line,
+              lineNumber: newLines.length
+            })
+          }
+        }
+
+        // Recursively add children
+        if (node.children.length > 0) {
+          flatten(node.children)
+        }
+      }
+    }
+
+    flatten(this.structure)
+
+    // Replace document lines
+    this.document.lines = newLines
+
+    // Close restructure mode
+    this.exitRestructureMode()
+
+    // Trigger save
+    this.document.save()
+  }
+
+  exitRestructureMode() {
+    document.querySelector('.restructure-modal').remove()
+    this.mode = 'normal'
+  }
+}
+```
+
+### 10.6 Keyboard Shortcuts in Restructure Mode
+
+```
+Up/Down         Navigate items
+←/→             Outdent/Indent selected item
+Cmd+↑/↓         Move item up/down
+Space           Toggle collapse
+Enter           Edit header title inline
+Delete          Delete section (with confirmation)
+Esc             Exit restructure mode
+Cmd+Z           Undo last change
+```
+
+### 10.7 Additional Features
+
+**1. Bulk Operations:**
+```
+[✓] Select multiple headers (Cmd+Click)
+    → Move all selected
+    → Change level of all selected
+    → Delete all selected
+```
+
+**2. Search/Filter:**
+```
+[🔍 Search headers...]
+    → Only show matching headers
+    → Highlight matches
+```
+
+**3. Auto-organize:**
+```
+[Auto-organize ▼]
+  → Alphabetically
+  → By date (if headers have dates)
+  → By length (shortest first)
+```
+
+**4. Diff View:**
+```
+Show what changed:
+  • "Budget" moved from line 45 → line 78
+  • "API Design" indented from ## → ###
+  • "Phase 2" moved up 3 positions
+```
+
+### 10.8 Performance
+
+- **Lazy rendering**: Only render visible tree nodes
+- **Virtual list**: For documents with hundreds of headers
+- **Debounced updates**: Smooth dragging without lag
+- **Undo/redo**: Full history stack for restructure operations
+
+---
+
+## 11. Performance Optimizations
+
+### 11.1 Selection-Aware Virtual Scrolling
 **Critical**: When user selects text, don't despawn lines from DOM
 
 ```javascript
@@ -1230,7 +2036,7 @@ document.addEventListener('selectionchange', () => {
 - Without this, virtual scrolling would remove lines from DOM, breaking selection
 - The trade-off: Temporarily use more memory during selection, but maintains UX
 
-### 9.2 Virtual Scrolling
+### 11.2 Virtual Scrolling
 **Problem**: Rendering 100,000 lines in DOM = browser freeze
 **Solution**: Only render visible lines + buffer
 
@@ -1256,7 +2062,7 @@ class VirtualScroller {
 }
 ```
 
-### 4.2 Incremental Parsing
+### 11.3 Incremental Parsing
 Don't re-parse entire document on each change:
 ```javascript
 class IncrementalParser {
@@ -1277,7 +2083,7 @@ class IncrementalParser {
 }
 ```
 
-### 4.3 Efficient DOM Updates
+### 11.4 Efficient DOM Updates
 Use DocumentFragment and minimize reflows:
 ```javascript
 function updateVisibleLines(linesToRender) {
@@ -1297,7 +2103,7 @@ function updateVisibleLines(linesToRender) {
 }
 ```
 
-### 4.4 Debouncing & Throttling
+### 11.5 Debouncing & Throttling
 ```javascript
 // Auto-save: debounce (wait for typing to stop)
 const debouncedSave = debounce(saveToIndexedDB, 1000)
@@ -1306,7 +2112,7 @@ const debouncedSave = debounce(saveToIndexedDB, 1000)
 const throttledRender = throttle(renderVisibleLines, 16) // ~60fps
 ```
 
-### 4.5 Web Worker for Heavy Processing
+### 11.6 Web Worker for Heavy Processing
 ```javascript
 // parser.worker.js
 self.addEventListener('message', (e) => {
@@ -1578,7 +2384,23 @@ Cmd/Ctrl + 0          Reset font size
 
 ---
 
-### Phase 9: Polish & Additional Features (Post-MVP)
+### Phase 9: Inline Computation & Restructuring
+**Goal**: Dynamic values and document organization
+
+- [ ] Inline variable system (`$var = expression`)
+- [ ] Header-scoped variable evaluation
+- [ ] Live result display with → symbol
+- [ ] Dependency tracking and reactive updates
+- [ ] Document restructuring mode
+- [ ] Drag-and-drop tree view
+- [ ] Keyboard shortcuts for restructuring
+- [ ] Auto-organize options
+
+**Deliverable**: Dynamic calculations and easy document reorganization
+
+---
+
+### Phase 10: Polish & Additional Features (Post-MVP)
 **Goal**: Nice-to-have enhancements
 
 - [ ] Multi-document management improvements
@@ -1589,10 +2411,12 @@ Cmd/Ctrl + 0          Reset font size
 - [ ] Document templates
 - [ ] Keyboard shortcut customization
 - [ ] Mobile/tablet optimization
+- [ ] Advanced variable functions (arrays, dates, strings)
+- [ ] Bulk header operations in restructure mode
 
 ---
 
-## 10. Technical Challenges & Solutions
+## 12. Technical Challenges & Solutions
 
 ### Challenge 1: Contenteditable vs Textarea
 **Problem**: Contenteditable is complex but allows rich display; textarea is simple but plain
@@ -1744,7 +2568,7 @@ function decodeHeaderPath(encoded) {
 
 ---
 
-## 11. Testing Strategy
+## 13. Testing Strategy
 
 ### Unit Tests
 - Storage module (CRUD operations)
@@ -1817,7 +2641,7 @@ function decodeHeaderPath(encoded) {
 
 ---
 
-## 12. Success Metrics
+## 14. Success Metrics
 
 The implementation will be considered successful when:
 
@@ -1859,7 +2683,7 @@ The implementation will be considered successful when:
 
 ---
 
-## 13. Future Enhancements
+## 15. Future Enhancements
 
 Beyond the initial implementation:
 
@@ -1877,7 +2701,7 @@ Beyond the initial implementation:
 
 ---
 
-## 14. Open Questions
+## 16. Open Questions
 
 Before implementation, clarify:
 
@@ -1915,26 +2739,30 @@ Before implementation, clarify:
 
 ---
 
-## 15. Summary
+## 17. Summary
 
 This plan outlines a complete, feature-rich, performant, serverless markdown editor that goes far beyond basic note-taking. It combines powerful text editing with rich content support, advanced navigation, and robust data management - all running entirely client-side.
 
 **Key Innovations**:
 1. **Arbitrary folding**: Collapse content at ANY point, not just headers - fold in the middle of CSV dumps
 2. **Selection-aware virtual scrolling**: Handle 100K+ lines while maintaining text selection capability
-3. **URL-based navigation**: Focus on any header via URL, with browser history integration
-4. **Scope-controlled search**: Regex search/replace within document, header, or nested sections
-5. **Directory-style paths**: Consistent `/Header/Subheader` syntax throughout the app
-6. **Discrete encryption**: Compressed, encrypted exports without obvious UI indicators
-7. **Rich content**: Inline images, attachments, graphical tables, HTML previews
-8. **Custom themes**: Full theme editor with import/export
-9. **Performance-first**: Virtual scrolling, incremental parsing, Web Workers
-10. **Serverless & private**: 100% client-side, no backend required
+3. **Inline computation**: Dynamic `$variable = expression` system with live results and header-scoped evaluation
+4. **Drag-and-drop restructuring**: Visual tree view for easy document reorganization
+5. **URL-based navigation**: Focus on any header via URL, with browser history integration
+6. **Scope-controlled search**: Regex search/replace within document, header, or nested sections
+7. **Directory-style paths**: Consistent `/Header/Subheader` syntax throughout the app
+8. **Discrete encryption**: Compressed, encrypted exports without obvious UI indicators
+9. **Rich content**: Inline images, attachments, graphical tables, HTML previews
+10. **Custom themes**: Full theme editor with import/export
+11. **Performance-first**: Virtual scrolling, incremental parsing, Web Workers
+12. **Serverless & private**: 100% client-side, no backend required
 
 **Feature Highlights**:
 - ✓ Plain markdown editing (no WYSIWYG bloat)
 - ✓ Fold anywhere in document
 - ✓ Handle massive files (100K+ lines) smoothly
+- ✓ Inline calculations with `$variable = expression` syntax
+- ✓ Drag-and-drop document restructuring mode
 - ✓ Regex search with scopes (document/header/nested)
 - ✓ URL navigation with shareable links
 - ✓ Images with resizing, file attachments
@@ -1963,12 +2791,13 @@ This plan outlines a complete, feature-rich, performant, serverless markdown edi
 - **Phase 6**: Rich content (images, attachments, tables)
 - **Phase 7**: Search, navigation, export (power features)
 - **Phase 8**: Themes & customization (personalization)
-- **Phase 9**: Additional polish & features
+- **Phase 9**: Inline computation & restructuring (dynamic features)
+- **Phase 10**: Additional polish & features
 
 **Next Steps**:
 1. Review this comprehensive plan
-2. Clarify open questions (Section 14)
+2. Clarify open questions (Section 16)
 3. Begin Phase 1 implementation
 4. Iterate based on testing and feedback
 
-This is a **substantial application** with ambitious features, but the phased approach ensures we can deliver a working MVP (Phases 1-5) while building toward the full vision.
+This is a **substantial application** with ambitious features, but the phased approach ensures we can deliver a working MVP (Phases 1-5) while building toward the full vision. Phases 6-9 add power-user features like rich content, advanced search, custom themes, dynamic calculations, and document reorganization tools.
