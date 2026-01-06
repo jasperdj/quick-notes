@@ -145,3 +145,46 @@ This file tracks all architectural and implementation decisions made during Phas
 - User feedback via save indicator
 
 ---
+
+## 2026-01-06 - Fix: Transparent Textarea for Overlay Visibility
+
+**Context:** Syntax highlighting wasn't visible on deployed site - overlay was rendering but hidden behind opaque textarea.
+
+**Problem:**
+- Textarea had `background: var(--bg-primary)` (opaque)
+- Overlay was at `z-index: 0` (behind textarea)
+- Even though overlay was rendering, it was completely blocked
+
+**Options Considered:**
+1. Swap z-index (overlay on top) - breaks text selection and input
+2. Make textarea semi-transparent - works but shows both layers
+3. Make textarea fully transparent - cleanest solution
+
+**Decision:** Make textarea fully transparent
+
+**Implementation:**
+- Textarea: `background: transparent`, `color: transparent`, `-webkit-text-fill-color: transparent`
+- Overlay: `background: var(--bg-primary)`, `color: var(--text-primary)` (holds the actual colors)
+- Container: `background: var(--bg-primary)` (fallback)
+- Added selection styling for transparent text (`::selection` pseudo-element)
+
+**Reasoning:**
+- Textarea remains functional for input, selection, cursor
+- Overlay displays the actual colored text
+- Caret remains visible via `caret-color`
+- Text selection visible via `::selection` pseudo-element
+- Cleanest separation of concerns
+
+**Trade-offs:**
+- Slightly unconventional approach (transparent text is unusual)
+- Requires careful CSS to keep caret/selection visible
+- But: No library dependencies, full control, works perfectly
+
+**Validation:**
+- Syntax highlighting now visible on deployed site
+- Typing still works normally
+- Selection highlighting works (blue highlight)
+- Caret visible and positioned correctly
+- All 12 storage tests still passing
+
+---
