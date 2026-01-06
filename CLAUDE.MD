@@ -321,12 +321,12 @@ Every time you start working on folded, follow this sequence:
 
 ## 📖 Development Phases Overview
 
-| Phase | Instances | Duration | Strategy | Progress File |
-|-------|-----------|----------|----------|---------------|
-| 1 | 1 (Serial) | 1-2 weeks | Core foundation | `.claude/progress/phase1.md` |
-| 2 | 6 (Parallel) | 2-4 weeks | Feature modules | `.claude/progress/phase2-instanceN.md` |
-| 3 | 4 (Parallel) | 2-3 weeks | Advanced features | `.claude/progress/phase3-instanceN.md` |
-| 4 | 2 (Parallel) | 1-2 weeks | Polish & testing | `.claude/progress/phase4.md` |
+| Phase | Features | Duration | Strategy | Progress Folder |
+|-------|----------|----------|----------|-----------------|
+| 1 | 1 (Serial) | 1-2 weeks | Core foundation | `.claude/progress/phase1/` |
+| 2 | 6 (Parallel) | 2-4 weeks | Feature modules | `.claude/progress/phase2/{feature}/` |
+| 3 | 4 (Parallel) | 2-3 weeks | Advanced features | `.claude/progress/phase3/{feature}/` |
+| 4 | 2 (Parallel) | 1-2 weeks | Polish & testing | `.claude/progress/phase4/` |
 
 ---
 
@@ -897,34 +897,29 @@ Creating phase2-instanceN.md files for coordination
 
 When running multiple Claude instances in parallel, coordination is critical.
 
-#### Setup: Create Coordination Files
+#### Setup: Create Feature Folders
 
-Before starting parallel work:
+Before starting parallel work, create isolated progress folders for each feature:
 
 ```bash
-# Create instance-specific progress files
-mkdir -p .claude/progress/phase2
+# Create feature-specific progress folders
+mkdir -p .claude/progress/phase2/{folding,search,richcontent,export,themes,codepreview}
 
-for i in {1..6}; do
-  cat > .claude/progress/phase2/instance$i.md << EOF
-# Instance $i Progress
+# Create progress files for each feature
+for feature in folding search richcontent export themes codepreview; do
+  mkdir -p .claude/progress/phase2/$feature
 
-## Feature
-[Will be filled based on assignment]
+  # current-state.md
+  cat > .claude/progress/phase2/$feature/current-state.md << EOF
+# Current State - $feature
 
 ## Status
 Not Started
 
-## Files
-[List of files this instance owns]
-
-## Dependencies
-[Other instances/modules this depends on]
-
 ## Current Task
 None
 
-## Completed
+## Last Completed
 []
 
 ## Next Up
@@ -936,6 +931,34 @@ None
 ## Notes
 []
 EOF
+
+  # decisions.md
+  cat > .claude/progress/phase2/$feature/decisions.md << EOF
+# Decision Log - $feature
+
+[Decisions specific to $feature feature will be recorded here]
+EOF
+
+  # learnings.md
+  cat > .claude/progress/phase2/$feature/learnings.md << EOF
+# Learnings & Insights - $feature
+
+[Insights from building $feature will be captured here]
+EOF
+
+  # session-log.md
+  cat > .claude/progress/phase2/$feature/session-log.md << EOF
+# Session Log - $feature
+
+[Daily work summaries for $feature]
+EOF
+
+  # tests-results.md
+  cat > .claude/progress/phase2/$feature/tests-results.md << EOF
+# Test Results - $feature
+
+[Test results and validation tracking for $feature]
+EOF
 done
 
 # Create shared coordination file
@@ -944,52 +967,68 @@ cat > .claude/progress/phase2/coordination.md << 'EOF'
 
 ## Daily Standup - [Date]
 
-### Instance 1: [Feature]
-- Status: [In Progress / Blocked / Complete]
+### Folding
+- Status: [Not Started / In Progress / Blocked / Complete]
 - Progress: [X%]
 - Blockers: [None / List]
+- Notes: []
 
-### Instance 2: [Feature]
-...
+### Search
+- Status: [Not Started / In Progress / Blocked / Complete]
+- Progress: [X%]
+- Blockers: [None / List]
+- Notes: []
 
-### Instance 3: [Feature]
-...
+### Rich Content
+- Status: [Not Started / In Progress / Blocked / Complete]
+- Progress: [X%]
+- Blockers: [None / List]
+- Notes: []
 
-### Instance 4: [Feature]
-...
+### Export/Import
+- Status: [Not Started / In Progress / Blocked / Complete]
+- Progress: [X%]
+- Blockers: [None / List]
+- Notes: []
 
-### Instance 5: [Feature]
-...
+### Themes
+- Status: [Not Started / In Progress / Blocked / Complete]
+- Progress: [X%]
+- Blockers: [None / List]
+- Notes: []
 
-### Instance 6: [Feature]
-...
+### Code Previews
+- Status: [Not Started / In Progress / Blocked / Complete]
+- Progress: [X%]
+- Blockers: [None / List]
+- Notes: []
 
 ## Integration Issues
-[Any conflicts or coordination needed]
+[Any conflicts or coordination needed between features]
 
 ## Shared Interface Changes
-[Any changes to core modules that affect multiple instances]
+[Any changes to core modules that affect multiple features]
 
 ## Next Steps
 [What needs to happen to keep moving forward]
 EOF
 ```
 
-### General Setup for All Parallel Instances
+### General Setup for All Parallel Features
 
-**Before ANY instance starts work:**
+**Before ANY feature development starts:**
 
 ```
-IMPORTANT: You are working on Instance X in a parallel development environment.
+IMPORTANT: You are working on the [FEATURE] feature in a parallel development environment.
 
 RULES:
-1. Read .claude/progress/phase2/instanceX.md FIRST
+1. Read .claude/progress/phase2/[feature]/current-state.md FIRST
 2. Read .claude/progress/phase2/coordination.md for context
-3. Work ONLY on files assigned to your instance
+3. Work ONLY on files assigned to this feature
 4. Do NOT modify core files (editor.js, parser.js, renderer.js, storage.js)
-5. Update your instance progress file after each significant task
+5. Update your feature's progress files after each significant task
 6. Update coordination.md daily
-7. Document any interface changes that affect other instances
+7. Document any interface changes that affect other features
 
 CORE INTERFACES (read-only for you):
 - Editor: getLine(), setLine(), getCursor(), onChange()
@@ -997,34 +1036,37 @@ CORE INTERFACES (read-only for you):
 - Storage: saveDocument(), loadDocument(), saveSetting(), loadSetting()
 - Renderer: updateLine(), scrollToLine()
 
-YOUR INSTANCE:
-Instance X: [Feature Name]
+YOUR FEATURE:
+Feature: [feature-name]
 Branch: feature/[feature-name]
 Files: [List of files you own]
+Progress Folder: .claude/progress/phase2/[feature-name]/
 
 PROGRESS TRACKING:
-- Update .claude/progress/phase2/instanceX.md continuously
-- Document decisions in .claude/progress/decisions.md
-- Log learnings in .claude/progress/learnings.md
+- Update .claude/progress/phase2/[feature]/current-state.md continuously
+- Document decisions in .claude/progress/phase2/[feature]/decisions.md
+- Log learnings in .claude/progress/phase2/[feature]/learnings.md
+- Keep session log in .claude/progress/phase2/[feature]/session-log.md
+- Track tests in .claude/progress/phase2/[feature]/tests-results.md
 - Update coordination.md daily with status
 
 START BY:
-1. Reading your instance progress file
+1. Reading your feature's current-state.md
 2. Reading coordination.md
 3. Creating your feature branch
 4. Setting up tests
 5. Building smallest testable unit first
 ```
 
-### Instance 1: Folding System
+### Feature: Folding System
 
 **Branch:** `feature/folding`
-**Progress File:** `.claude/progress/phase2/instance1.md`
+**Progress Folder:** `.claude/progress/phase2/folding/`
 **Files:** `js/modules/folding.js`, `css/folding.css`, `tests/folding.test.js`
 
 **Prompt:**
 ```
-Instance 1: Folding System
+Feature: Folding System
 
 CONTEXT:
 You are building the CORE feature of folded - the ability to fold content at ANY point.
@@ -1032,7 +1074,7 @@ This is what differentiates us from other editors.
 
 Read:
 - PLAN.md section 3 (Folding System)
-- .claude/progress/phase2/instance1.md
+- .claude/progress/phase2/folding/current-state.md
 - .claude/progress/phase2/coordination.md
 
 YOUR RESPONSIBILITIES:
@@ -1080,30 +1122,30 @@ VALIDATION:
 - [ ] 20+ tests passing
 
 UPDATE PROGRESS:
-- Update instance1.md after each day
-- Document fold persistence approach in decisions.md
-- Log any clever patterns in learnings.md
+- Update .claude/progress/phase2/folding/current-state.md after each day
+- Document fold persistence approach in .claude/progress/phase2/folding/decisions.md
+- Log any clever patterns in .claude/progress/phase2/folding/learnings.md
 - Update coordination.md daily
 
 START: Create basic fold data structure and write tests for it.
 ```
 
-### Instance 2: Search & Navigation
+### Feature: Search & Navigation
 
 **Branch:** `feature/search`
-**Progress File:** `.claude/progress/phase2/instance2.md`
+**Progress Folder:** `.claude/progress/phase2/search/`
 **Files:** `js/modules/search.js`, `js/modules/navigation.js`, `css/search.css`, `tests/search.test.js`
 
 **Prompt:**
 ```
-Instance 2: Search & Navigation
+Feature: Search & Navigation
 
 CONTEXT:
 Build powerful search with regex support and URL-based navigation.
 
 Read:
 - PLAN.md section 4 (Search & Navigation)
-- .claude/progress/phase2/instance2.md
+- .claude/progress/phase2/search/current-state.md
 - .claude/progress/phase2/coordination.md
 
 YOUR RESPONSIBILITIES:
@@ -1151,36 +1193,36 @@ VALIDATION:
 - [ ] 20+ tests passing
 
 COORDINATION:
-With Instance 1 (Folding): Decide whether search should:
+With Folding feature: Decide whether search should:
 - Skip folded content (my recommendation)
 - OR search inside folds but keep them collapsed
 
-Document this decision in coordination.md and decisions.md
+Document this decision in coordination.md and your feature's decisions.md
 
 UPDATE PROGRESS:
-- Update instance2.md daily
-- Document search algorithm choices
+- Update .claude/progress/phase2/search/current-state.md daily
+- Document search algorithm choices in .claude/progress/phase2/search/decisions.md
 - Update coordination.md with dependencies
 
 START: Build search engine with regex support and scope filtering.
 ```
 
-### Instance 3: Rich Content
+### Feature: Rich Content
 
 **Branch:** `feature/richcontent`
-**Progress File:** `.claude/progress/phase2/instance3.md`
+**Progress Folder:** `.claude/progress/phase2/richcontent/`
 **Files:** `js/modules/richcontent.js`, `css/richcontent.css`, `tests/richcontent.test.js`
 
 **Prompt:**
 ```
-Instance 3: Rich Content
+Feature: Rich Content
 
 CONTEXT:
 Add support for images, attachments, interactive checkboxes, and Mermaid diagrams.
 
 Read:
 - PLAN.md section 6 (Rich Content Support)
-- .claude/progress/phase2/instance3.md
+- .claude/progress/phase2/richcontent/current-state.md
 - .claude/progress/phase2/coordination.md
 
 YOUR RESPONSIBILITIES:
@@ -1234,29 +1276,29 @@ VALIDATION:
 - [ ] 25+ tests passing
 
 UPDATE PROGRESS:
-- Update instance3.md after each feature
-- Document image storage approach (base64 vs blob URLs)
-- Log performance with large images
+- Update .claude/progress/phase2/richcontent/current-state.md after each feature
+- Document image storage approach in .claude/progress/phase2/richcontent/decisions.md
+- Log performance with large images in .claude/progress/phase2/richcontent/learnings.md
 
 START: Image upload and storage first (it's the foundation for attachments).
 ```
 
-### Instance 4: Export/Import
+### Feature: Export/Import
 
 **Branch:** `feature/export`
-**Progress File:** `.claude/progress/phase2/instance4.md`
+**Progress Folder:** `.claude/progress/phase2/export/`
 **Files:** `js/modules/export.js`, `js/modules/import.js`, `js/workers/crypto.worker.js`, `tests/export.test.js`
 
 **Prompt:**
 ```
-Instance 4: Export/Import & Encryption
+Feature: Export/Import & Encryption
 
 CONTEXT:
 Build robust export/import with encryption and three import modes.
 
 Read:
 - PLAN.md sections 7.4-7.9 (Export/Import)
-- .claude/progress/phase2/instance4.md
+- .claude/progress/phase2/export/current-state.md
 - .claude/progress/phase2/coordination.md
 
 YOUR RESPONSIBILITIES:
@@ -1311,29 +1353,29 @@ SECURITY NOTES:
 - Document security approach in decisions.md
 
 UPDATE PROGRESS:
-- Update instance4.md after each security milestone
-- Document encryption choices
-- Log security learnings
+- Update .claude/progress/phase2/export/current-state.md after each security milestone
+- Document encryption choices in .claude/progress/phase2/export/decisions.md
+- Log security learnings in .claude/progress/phase2/export/learnings.md
 
 START: Basic export (no encryption) with compression. Test thoroughly.
 ```
 
-### Instance 5: Themes & UI Polish
+### Feature: Themes & UI Polish
 
 **Branch:** `feature/themes`
-**Progress File:** `.claude/progress/phase2/instance5.md`
+**Progress Folder:** `.claude/progress/phase2/themes/`
 **Files:** `js/modules/themes.js`, `js/modules/keyboard.js`, `css/themes.css`, `tests/themes.test.js`
 
 **Prompt:**
 ```
-Instance 5: Themes & UI Polish
+Feature: Themes & UI Polish
 
 CONTEXT:
 Make folded beautiful with custom themes, keyboard shortcuts, and command palette.
 
 Read:
 - PLAN.md sections 5 (UI/UX), 6 (Keyboard), 8 (Themes)
-- .claude/progress/phase2/instance5.md
+- .claude/progress/phase2/themes/current-state.md
 - .claude/progress/phase2/coordination.md
 
 YOUR RESPONSIBILITIES:
@@ -1393,29 +1435,29 @@ VALIDATION:
 - [ ] 20+ tests passing
 
 UPDATE PROGRESS:
-- Update instance5.md as you add themes
-- Document theme architecture
-- Log UX insights
+- Update .claude/progress/phase2/themes/current-state.md as you add themes
+- Document theme architecture in .claude/progress/phase2/themes/decisions.md
+- Log UX insights in .claude/progress/phase2/themes/learnings.md
 
 START: Theme system with CSS variables and one working theme.
 ```
 
-### Instance 6: Code Previews
+### Feature: Code Previews
 
 **Branch:** `feature/codepreview`
-**Progress File:** `.claude/progress/phase2/instance6.md`
+**Progress Folder:** `.claude/progress/phase2/codepreview/`
 **Files:** `js/modules/codepreview.js`, `css/codepreview.css`, `tests/codepreview.test.js`
 
 **Prompt:**
 ```
-Instance 6: Code Previews
+Feature: Code Previews
 
 CONTEXT:
 Enable HTML code block previews with sandboxed iframes.
 
 Read:
 - PLAN.md section 6.6 (Code Previews)
-- .claude/progress/phase2/instance6.md
+- .claude/progress/phase2/codepreview/current-state.md
 - .claude/progress/phase2/coordination.md
 
 YOUR RESPONSIBILITIES:
@@ -1470,19 +1512,19 @@ Test with malicious code:
 None should escape sandbox. Document in tests-results.md
 
 UPDATE PROGRESS:
-- Update instance6.md
-- Document security approach
-- Log security test results
+- Update .claude/progress/phase2/codepreview/current-state.md
+- Document security approach in .claude/progress/phase2/codepreview/decisions.md
+- Log security test results in .claude/progress/phase2/codepreview/tests-results.md
 
 START: Basic preview with proper sandboxing. Security first!
 ```
 
 ### Phase 2 Daily Coordination
 
-**Every day, each instance should:**
+**Every day, each feature team should:**
 
 1. **Morning:** Read `coordination.md`, update your section with today's plan
-2. **During work:** Update your instance progress file
+2. **During work:** Update your feature's progress files
 3. **Evening:** Update `coordination.md` with progress, blockers, needs
 
 **Example coordination.md entry:**
@@ -1490,7 +1532,7 @@ START: Basic preview with proper sandboxing. Security first!
 ```markdown
 ## Daily Standup - 2026-01-07
 
-### Instance 1: Folding
+### Folding
 - Status: In Progress (Day 3)
 - Progress: 60%
 - Completed: Fold data structure, basic fold/unfold
@@ -1498,15 +1540,15 @@ START: Basic preview with proper sandboxing. Security first!
 - Blockers: None
 - Notes: Fold state persisting to IndexedDB works great
 
-### Instance 2: Search
+### Search
 - Status: In Progress (Day 2)
 - Progress: 40%
 - Completed: Search engine with regex
 - Today: Building search UI modal
 - Blockers: Waiting for decision on folded content handling
-- Notes: Need to coordinate with Instance 1 on search behavior
+- Notes: Need to coordinate with Folding feature on search behavior
 
-### Instance 3: Rich Content
+### Rich Content
 - Status: In Progress (Day 1)
 - Progress: 20%
 - Completed: Image upload working
@@ -1514,7 +1556,7 @@ START: Basic preview with proper sandboxing. Security first!
 - Blockers: None
 - Notes: Considering base64 vs blob URLs (will document decision)
 
-### Instance 4: Export/Import
+### Export/Import
 - Status: In Progress (Day 1)
 - Progress: 15%
 - Completed: Basic export structure
@@ -1522,7 +1564,7 @@ START: Basic preview with proper sandboxing. Security first!
 - Blockers: None
 - Notes: Gzip compression working, ~70% size reduction
 
-### Instance 5: Themes
+### Themes
 - Status: In Progress (Day 2)
 - Progress: 30%
 - Completed: Theme system, 2 themes working
@@ -1530,7 +1572,7 @@ START: Basic preview with proper sandboxing. Security first!
 - Blockers: None
 - Notes: CSS variables approach working well
 
-### Instance 6: Code Previews
+### Code Previews
 - Status: In Progress (Day 2)
 - Progress: 25%
 - Completed: Basic iframe preview
@@ -1542,7 +1584,7 @@ START: Basic preview with proper sandboxing. Security first!
 - **Search + Folding:** Need to decide if search should look inside folded content
   - Recommendation: Skip folded content (cleaner UX)
   - Decision needed by: Tomorrow
-  - Owners: Instance 1 & 2
+  - Owners: Folding & Search features
 
 ## Shared Interface Changes
 None today
@@ -1554,17 +1596,40 @@ None today
 
 ---
 
-## Phase 3: Advanced Features (4 Instances)
+## Phase 3: Advanced Features (4 Features)
 
 **Prerequisites:** Phase 2 complete and integrated.
 
-[Similar structure as Phase 2, with 4 instances:]
-- Instance 7: Inline Computation
-- Instance 8: Document Restructuring
-- Instance 9: Kanban View
-- Instance 10: GitHub Auto-Sync
+**Progress Folder:** `.claude/progress/phase3/`
 
-[Each with same level of detail as Phase 2 instances]
+Similar structure as Phase 2, with 4 parallel features:
+
+### Feature: Inline Computation
+**Branch:** `feature/computation`
+**Progress Folder:** `.claude/progress/phase3/computation/`
+**Files:** `js/modules/compute.js`, `tests/compute.test.js`
+
+### Feature: Document Restructuring
+**Branch:** `feature/restructure`
+**Progress Folder:** `.claude/progress/phase3/restructure/`
+**Files:** `js/modules/restructure.js`, `css/restructure.css`, `tests/restructure.test.js`
+
+### Feature: Kanban View
+**Branch:** `feature/kanban`
+**Progress Folder:** `.claude/progress/phase3/kanban/`
+**Files:** `js/modules/kanban.js`, `css/kanban.css`, `tests/kanban.test.js`
+
+### Feature: GitHub Auto-Sync
+**Branch:** `feature/github-sync`
+**Progress Folder:** `.claude/progress/phase3/github-sync/`
+**Files:** `js/modules/github-sync.js`, `tests/github-sync.test.js`
+
+Each feature follows the same progress tracking structure as Phase 2:
+- current-state.md
+- decisions.md
+- learnings.md
+- session-log.md
+- tests-results.md
 
 ---
 
@@ -1586,9 +1651,12 @@ Every week, review:
 # Weekly Integration Review - Week [N]
 
 ## Completed This Week
-- Instance 1: [Summary]
-- Instance 2: [Summary]
-...
+- Folding: [Summary]
+- Search: [Summary]
+- Rich Content: [Summary]
+- Export/Import: [Summary]
+- Themes: [Summary]
+- Code Previews: [Summary]
 
 ## Integration Challenges
 [What problems emerged when combining work?]
@@ -1857,22 +1925,40 @@ When you finish Phase 1, document it! When tests go from 40 to 100, note it! Pro
 ```
 .claude/
 └── progress/
-    ├── current-state.md          # Where you are NOW
-    ├── decisions.md              # Why you made choices
-    ├── learnings.md              # What you discovered
-    ├── session-log.md            # Daily summaries
-    ├── tests-results.md          # Validation tracking
-    ├── phase1.md                 # Phase 1 specific
+    ├── phase1/
+    │   ├── current-state.md      # Where you are NOW
+    │   ├── decisions.md          # Why you made choices
+    │   ├── learnings.md          # What you discovered
+    │   ├── session-log.md        # Daily summaries
+    │   └── tests-results.md      # Validation tracking
     ├── phase2/
-    │   ├── coordination.md       # Multi-instance sync
-    │   ├── instance1.md          # Folding progress
-    │   ├── instance2.md          # Search progress
-    │   ├── instance3.md          # Rich content progress
-    │   ├── instance4.md          # Export progress
-    │   ├── instance5.md          # Themes progress
-    │   └── instance6.md          # Preview progress
+    │   ├── coordination.md       # Cross-feature sync
+    │   ├── folding/
+    │   │   ├── current-state.md
+    │   │   ├── decisions.md
+    │   │   ├── learnings.md
+    │   │   ├── session-log.md
+    │   │   └── tests-results.md
+    │   ├── search/
+    │   │   └── [same 5 files]
+    │   ├── richcontent/
+    │   │   └── [same 5 files]
+    │   ├── export/
+    │   │   └── [same 5 files]
+    │   ├── themes/
+    │   │   └── [same 5 files]
+    │   └── codepreview/
+    │       └── [same 5 files]
     ├── phase3/
-    │   └── [similar structure]
+    │   ├── coordination.md
+    │   ├── computation/
+    │   │   └── [same 5 files]
+    │   ├── restructure/
+    │   │   └── [same 5 files]
+    │   ├── kanban/
+    │   │   └── [same 5 files]
+    │   └── github-sync/
+    │       └── [same 5 files]
     └── phase4/
         └── [similar structure]
 ```
