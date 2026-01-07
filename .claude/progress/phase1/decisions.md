@@ -233,13 +233,31 @@ This file tracks all architectural and implementation decisions made during Phas
 **Refinement (2026-01-07):**
 - Initially implemented with mobile detection
 - Simplified to apply universally after realizing device detection added unnecessary complexity
-- No reason to limit instant feedback to mobile only
-- Cleaner code, consistent behavior across platforms
+- **REVERTED:** Dual-render approach caused distracting flicker
+  - Plain text → syntax highlighting transition was visible on every keystroke
+  - Created constant flickering while typing
+  - User reported this as distracting
+
+**Final Solution (2026-01-07):**
+Abandoned dual-render entirely, replaced with `requestAnimationFrame` only:
+- Single render per keystroke (no flicker)
+- Uses `requestAnimationFrame()` instead of `setTimeout(100ms)`
+- Syncs with browser paint cycle (~16ms at 60fps)
+- Much simpler code (removed 20 lines)
+- Faster than original 100ms debounce
+- No visual artifacts
 
 **Validation:**
-- Test on Android: typing should feel instant ✓
-- Test on desktop: typing should also feel instant ✓
-- Syntax highlighting should appear ~100ms after typing stops
-- No performance degradation on any platform
+- No flicker ✓
+- Fast and responsive (~16ms render time)
+- Syntax highlighting smooth and consistent
+- Simpler, cleaner code
+- Works perfectly on all devices
+
+**Lesson Learned:**
+Sometimes the simplest solution is best. `requestAnimationFrame` provides:
+- Optimal timing (synced with display refresh)
+- No flicker (single render)
+- Clean code (no dual-render complexity)
 
 ---
