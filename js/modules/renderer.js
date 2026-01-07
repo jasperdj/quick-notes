@@ -85,7 +85,7 @@ class Renderer {
 
     /**
      * Render parsed lines to HTML
-     * Detects folded headers by checking if next line is a fold marker
+     * Fold state is now embedded in the line itself (isFolded property)
      * @param {array} parsedLines - Array of parsed line objects
      * @returns {string} HTML string
      */
@@ -95,10 +95,6 @@ class Renderer {
 
         for (let i = 0; i < parsedLines.length; i++) {
             const line = parsedLines[i];
-            const nextLine = parsedLines[i + 1];
-
-            // Check if this header/code-fence is followed by a fold marker
-            const isFolded = nextLine && nextLine.type === 'fold-marker';
 
             // Track code block state to know if fence is opening or closing
             let isOpeningFence = false;
@@ -107,7 +103,7 @@ class Renderer {
                 inCodeBlock = !inCodeBlock;
             }
 
-            lines.push(`<div class="overlay-line">${this.renderLine(line, isFolded, nextLine, isOpeningFence)}</div>`);
+            lines.push(`<div class="overlay-line">${this.renderLine(line, isOpeningFence)}</div>`);
         }
 
         return lines.join('');
@@ -115,37 +111,38 @@ class Renderer {
 
     /**
      * Render a single parsed line
-     * @param {object} line - Parsed line object
-     * @param {boolean} isFolded - Whether this line's content is folded
-     * @param {object} nextLine - Next line (fold marker if folded)
+     * @param {object} line - Parsed line object (includes isFolded, foldId if folded)
      * @param {boolean} isOpeningFence - Whether this code-fence is opening (not closing)
      * @returns {string} HTML string for the line
      */
-    renderLine(line, isFolded = false, nextLine = null, isOpeningFence = false) {
+    renderLine(line, isOpeningFence = false) {
         switch (line.type) {
-            case 'fold-marker':
-                // Fold markers are invisible - the header above shows the fold state
-                return '';
-
             case 'header':
-                const headerFoldId = isFolded && nextLine ? nextLine.foldId : null;
-                const headerClass = isFolded ? 'syntax-header folded' : 'syntax-header';
-                const dataAttr = isFolded
-                    ? `data-fold-id="${headerFoldId}"`
+                // For folded headers, show the text without the suffix
+                // line.text is the header text, line.raw includes the suffix
+                const headerDisplay = line.isFolded
+                    ? `${'#'.repeat(line.level)} ${line.text}`
+                    : line.raw;
+                const headerClass = line.isFolded ? 'syntax-header folded' : 'syntax-header';
+                const headerDataAttr = line.isFolded
+                    ? `data-fold-id="${line.foldId}"`
                     : `data-line="${line.lineNumber}"`;
-                return `<span class="fold-button ${isFolded ? 'folded' : ''}" ${dataAttr}>▼</span>` +
-                       `<span class="${headerClass}">${this.escapeHtml(line.raw)}</span>`;
+                return `<span class="fold-button ${line.isFolded ? 'folded' : ''}" ${headerDataAttr}>▼</span>` +
+                       `<span class="${headerClass}">${this.escapeHtml(headerDisplay)}</span>`;
 
             case 'code-fence':
                 // Only show fold button on opening fence, not closing fence
                 if (isOpeningFence) {
-                    const codeFoldId = isFolded && nextLine ? nextLine.foldId : null;
-                    const codeClass = isFolded ? 'syntax-code-block folded' : 'syntax-code-block';
-                    const codeDataAttr = isFolded
-                        ? `data-fold-id="${codeFoldId}"`
+                    // For folded code fences, show without the suffix
+                    const fenceDisplay = line.isFolded
+                        ? '```' + (line.lang || '')
+                        : line.raw;
+                    const codeClass = line.isFolded ? 'syntax-code-block folded' : 'syntax-code-block';
+                    const codeDataAttr = line.isFolded
+                        ? `data-fold-id="${line.foldId}"`
                         : `data-line="${line.lineNumber}"`;
-                    return `<span class="fold-button ${isFolded ? 'folded' : ''}" ${codeDataAttr}>▼</span>` +
-                           `<span class="${codeClass}">${this.escapeHtml(line.raw)}</span>`;
+                    return `<span class="fold-button ${line.isFolded ? 'folded' : ''}" ${codeDataAttr}>▼</span>` +
+                           `<span class="${codeClass}">${this.escapeHtml(fenceDisplay)}</span>`;
                 } else {
                     // Closing fence - no fold button
                     return `<span class="syntax-code-block">${this.escapeHtml(line.raw)}</span>`;
@@ -173,21 +170,6 @@ class Renderer {
             default:
                 return this.escapeHtml(line.raw);
         }
-    }
-
-    /**
-     * Render a fold marker as a clickable indicator
-     * @param {object} line - Parsed fold-marker line
-     * @returns {string} HTML string for fold indicator
-     */
-    renderFoldMarker(line) {
-        const label = line.label || 'Folded';
-        const lineCount = line.lineCount;
-        const linesWord = lineCount === 1 ? 'line' : 'lines';
-
-        return `<span class="fold-indicator" data-fold-id="${line.foldId}">` +
-               `▶ ${this.escapeHtml(label)} [${lineCount} ${linesWord}]` +
-               `</span>`;
     }
 
     /**

@@ -59,10 +59,6 @@ class FoldedApp {
             this.setupCursorTracking();
             console.log('✓ Cursor tracking set up');
 
-            // Set up fold marker navigation (arrow keys skip fold markers)
-            this.setupFoldMarkerNavigation();
-            console.log('✓ Fold marker navigation set up');
-
             // Set up before unload handler
             this.setupBeforeUnload();
             console.log('✓ Before unload handler set up');
@@ -133,70 +129,12 @@ class FoldedApp {
             if (cursorElement) {
                 cursorElement.textContent = `Ln ${pos.line + 1}, Col ${pos.col + 1}`;
             }
-
-            // If cursor lands on fold marker (by click), move it down
-            this.moveCursorOffFoldMarker(pos.line);
         };
 
         editor.onSelectionChange(updateCursorPos);
 
         // Initial update
         updateCursorPos();
-    }
-
-    /**
-     * If cursor is on a fold marker line, move it to the next line
-     * @param {number} lineNumber - Current cursor line
-     */
-    moveCursorOffFoldMarker(lineNumber) {
-        const parsed = parser.getParsedLines();
-        if (!parsed || lineNumber >= parsed.length) return;
-
-        const currentLine = parsed[lineNumber];
-        if (currentLine && currentLine.type === 'fold-marker') {
-            // Move cursor to next line (or stay if at end)
-            const nextLine = lineNumber + 1;
-            if (nextLine < parsed.length) {
-                setTimeout(() => {
-                    editor.setCursor(nextLine, 0);
-                }, 0);
-            }
-        }
-    }
-
-    /**
-     * Set up keyboard navigation to skip fold markers
-     * Arrow keys skip over fold marker lines, but they remain selectable
-     */
-    setupFoldMarkerNavigation() {
-        const editorTextarea = document.getElementById('editor');
-        if (!editorTextarea) return;
-
-        editorTextarea.addEventListener('keydown', (e) => {
-            // Only handle arrow up/down without shift (shift = selecting)
-            if (e.shiftKey) return;
-            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-
-            const cursor = editor.getCursor();
-            const parsed = parser.getParsedLines();
-            if (!parsed) return;
-
-            const direction = e.key === 'ArrowDown' ? 1 : -1;
-            const nextLine = cursor.line + direction;
-
-            // Check if next line is a fold marker
-            if (nextLine >= 0 && nextLine < parsed.length) {
-                const nextLineData = parsed[nextLine];
-                if (nextLineData && nextLineData.type === 'fold-marker') {
-                    e.preventDefault();
-                    // Skip to the line after the fold marker
-                    const skipToLine = nextLine + direction;
-                    if (skipToLine >= 0 && skipToLine < parsed.length) {
-                        editor.setCursor(skipToLine, cursor.col);
-                    }
-                }
-            }
-        });
     }
 
     /**
@@ -239,7 +177,7 @@ class FoldedApp {
 
     /**
      * Smart fold at cursor position (toggle behavior)
-     * - If on a fold marker, expand it
+     * - If on a folded header/fence, expand it
      * - Otherwise, find containing header and fold it
      * - Works from anywhere within a header section
      */
@@ -247,9 +185,9 @@ class FoldedApp {
         const cursor = editor.getCursor();
         const parsed = parser.getParsedLines();
 
-        // Check if cursor is on a fold marker - if so, expand it (toggle: unfold)
+        // Check if cursor is on a folded line - if so, expand it (toggle: unfold)
         const currentLine = parsed[cursor.line];
-        if (currentLine && currentLine.type === 'fold-marker') {
+        if (currentLine && currentLine.isFolded && currentLine.foldId) {
             const expanded = foldManager.expandFold(currentLine.foldId);
             if (expanded) {
                 console.log(`Expanded fold: ${currentLine.foldId}`);

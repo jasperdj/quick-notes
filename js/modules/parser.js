@@ -62,14 +62,29 @@ class Parser {
     parseLine(line, lineNumber, context = {}) {
         const trimmed = line.trim();
 
-        // Fold markers: «F:id:label:n» (short format)
-        const foldMatch = line.match(/^«F:(\d+):([^:]*):(\d+)»$/);
-        if (foldMatch) {
+        // Headers with fold suffix: # Header ⟨id⟩
+        // Check this BEFORE regular headers
+        const foldedHeaderMatch = line.match(/^(#{1,6})\s+(.+?)\s*⟨(\d+)⟩$/);
+        if (foldedHeaderMatch) {
             return {
-                type: 'fold-marker',
-                foldId: parseInt(foldMatch[1], 10),
-                label: foldMatch[2].replace(/∶/g, ':'), // Restore Unicode colons
-                lineCount: parseInt(foldMatch[3], 10),
+                type: 'header',
+                level: foldedHeaderMatch[1].length,
+                text: foldedHeaderMatch[2],
+                foldId: parseInt(foldedHeaderMatch[3], 10),
+                isFolded: true,
+                raw: line,
+                lineNumber
+            };
+        }
+
+        // Code fence with fold suffix: ```lang ⟨id⟩
+        const foldedCodeMatch = line.match(/^```(\w*)\s*⟨(\d+)⟩$/);
+        if (foldedCodeMatch) {
+            return {
+                type: 'code-fence',
+                lang: foldedCodeMatch[1] || '',
+                foldId: parseInt(foldedCodeMatch[2], 10),
+                isFolded: true,
                 raw: line,
                 lineNumber
             };
@@ -81,6 +96,7 @@ class Parser {
             return {
                 type: 'code-fence',
                 lang,
+                isFolded: false,
                 raw: line,
                 lineNumber
             };
@@ -102,6 +118,7 @@ class Parser {
                 type: 'header',
                 level: headerMatch[1].length,
                 text: headerMatch[2],
+                isFolded: false,
                 raw: line,
                 lineNumber
             };

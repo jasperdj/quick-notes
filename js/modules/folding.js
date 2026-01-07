@@ -1,16 +1,16 @@
 /**
  * Folding Module - Content-based folding system for folded
  *
- * NEW ARCHITECTURE: Folds actually modify the document content
- * - When collapsing: removes lines from document, stores them, inserts marker
- * - When expanding: removes marker, restores original lines
- * - This keeps textarea and overlay always in sync (single source of truth)
+ * ARCHITECTURE: Folds modify the document content
+ * - When collapsing: removes lines, appends ⟨id⟩ suffix to header/fence
+ * - When expanding: removes suffix, restores original lines
+ * - Single source of truth: fold state is in the document itself
  */
 
 import editor from './editor.js';
 
-// Fold marker format: «F:id:label:n» (short to fit behind visual indicator)
-const FOLD_MARKER_REGEX = /^«F:(\d+):([^:]*):(\d+)»$/;
+// Fold suffix format: ⟨id⟩ appended to header/code-fence line
+const FOLD_SUFFIX_REGEX = /\s*⟨(\d+)⟩$/;
 
 class FoldManager {
     constructor() {
@@ -31,49 +31,45 @@ class FoldManager {
     }
 
     /**
-     * Create a fold marker string
-     * @param {number} foldId - Fold ID (number only)
-     * @param {string} label - Display label
-     * @param {number} lineCount - Number of hidden lines
-     * @returns {string} Fold marker string
+     * Create a fold suffix string
+     * @param {number} foldId - Fold ID
+     * @returns {string} Fold suffix like " ⟨1⟩"
      */
-    createMarker(foldId, label, lineCount) {
-        // Escape colons in label, truncate to keep marker short
-        const safeLabel = label.replace(/:/g, '∶').substring(0, 20);
-        return `«F:${foldId}:${safeLabel}:${lineCount}»`;
+    createSuffix(foldId) {
+        return ` ⟨${foldId}⟩`;
     }
 
     /**
-     * Parse a fold marker string
+     * Parse a fold suffix from a line
      * @param {string} line - Line to parse
-     * @returns {object|null} { foldId, label, lineCount } or null
+     * @returns {object|null} { foldId, baseLine } or null
      */
-    parseMarker(line) {
-        const match = line.match(FOLD_MARKER_REGEX);
+    parseSuffix(line) {
+        const match = line.match(FOLD_SUFFIX_REGEX);
         if (!match) return null;
 
         return {
             foldId: parseInt(match[1], 10),
-            label: match[2].replace(/∶/g, ':'), // Restore colons
-            lineCount: parseInt(match[3], 10)
+            baseLine: line.replace(FOLD_SUFFIX_REGEX, '')
         };
     }
 
     /**
-     * Check if a line is a fold marker
+     * Check if a line has a fold suffix
      * @param {string} line - Line to check
      * @returns {boolean}
      */
-    isMarker(line) {
-        return FOLD_MARKER_REGEX.test(line);
+    hasSuffix(line) {
+        return FOLD_SUFFIX_REGEX.test(line);
     }
 
     /**
-     * Create a new fold - ACTUALLY MODIFIES THE DOCUMENT
-     * @param {number} startLine - Start line (the header/trigger line, kept visible)
+     * Create a new fold - MODIFIES THE DOCUMENT
+     * Appends fold suffix to header/fence line and removes content below
+     * @param {number} startLine - Start line (the header/fence line, gets suffix)
      * @param {number} endLine - End line (inclusive, will be hidden)
-     * @param {string} label - Label for the fold indicator
-     * @returns {string|null} Fold ID or null if failed
+     * @param {string} label - Label for storage
+     * @returns {number|null} Fold ID or null if failed
      */
     createFold(startLine, endLine, label = 'Folded') {
         const editorRef = this.editor || editor;
@@ -89,14 +85,14 @@ class FoldManager {
             endLine = lines.length - 1;
         }
 
-        // Check if trying to fold a fold marker
-        if (this.isMarker(lines[startLine])) {
-            console.warn('Cannot fold a fold marker');
+        // Check if already folded (has suffix)
+        if (this.hasSuffix(lines[startLine])) {
+            console.warn('Line already has fold suffix');
             return null;
         }
 
         // Calculate what to fold
-        // Keep startLine visible, fold startLine+1 through endLine
+        // Keep startLine visible (with suffix), fold startLine+1 through endLine
         const foldStartIndex = startLine + 1;
         const linesToFold = lines.slice(foldStartIndex, endLine + 1);
         const lineCount = linesToFold.length;
@@ -106,7 +102,7 @@ class FoldManager {
             return null;
         }
 
-        // Generate fold ID (just a number now)
+        // Generate fold ID
         const foldId = this.nextFoldId++;
 
         // Store the folded content
@@ -116,22 +112,14 @@ class FoldManager {
             lineCount: lineCount
         });
 
-        // Create the marker
-        const marker = this.createMarker(foldId, label, lineCount);
-
-        // Modify the document: remove folded lines, insert marker
-        // The marker goes right after startLine (replacing the folded content)
+        // Modify the document:
+        // 1. Append suffix to the start line
+        // 2. Remove the folded lines
         const newLines = [
-            ...lines.slice(0, foldStartIndex),
-            marker,
+            ...lines.slice(0, startLine),
+            lines[startLine] + this.createSuffix(foldId),
             ...lines.slice(endLine + 1)
         ];
-
-        // Ensure there's always at least one line after the fold marker
-        // so cursor has somewhere to go
-        if (newLines[newLines.length - 1].match(/^«F:\d+:[^:]*:\d+»$/)) {
-            newLines.push('');
-        }
 
         editorRef.setLines(newLines);
 
@@ -142,6 +130,7 @@ class FoldManager {
 
     /**
      * Expand a fold - RESTORES THE ORIGINAL CONTENT
+     * Removes suffix from header/fence and inserts stored content
      * @param {number} foldId - Fold ID to expand
      * @returns {boolean} Success
      */
@@ -155,41 +144,45 @@ class FoldManager {
             return false;
         }
 
-        // Find ALL markers with this foldId in the document
+        // Find line with this fold suffix
         const lines = editorRef.getLines();
-        const markerIndices = [];
+        let foldLineIndex = -1;
 
         for (let i = 0; i < lines.length; i++) {
-            const parsed = this.parseMarker(lines[i]);
+            const parsed = this.parseSuffix(lines[i]);
             if (parsed && parsed.foldId === foldId) {
-                markerIndices.push(i);
+                foldLineIndex = i;
+                break;
             }
         }
 
-        if (markerIndices.length === 0) {
-            console.error('Fold marker not found in document:', foldId);
+        if (foldLineIndex === -1) {
+            console.error('Fold suffix not found in document:', foldId);
             // Clean up orphaned content
             this.foldedContent.delete(foldId);
             return false;
         }
 
-        // Expand only the FIRST marker found
-        const markerIndex = markerIndices[0];
+        // Get the base line (without suffix)
+        const parsed = this.parseSuffix(lines[foldLineIndex]);
+        const baseLine = parsed.baseLine;
 
-        // Replace marker with stored lines
+        // Build new document:
+        // 1. Lines before the fold
+        // 2. The header/fence line WITHOUT suffix
+        // 3. The restored content
+        // 4. Lines after the fold
         const newLines = [
-            ...lines.slice(0, markerIndex),
+            ...lines.slice(0, foldLineIndex),
+            baseLine,
             ...stored.lines,
-            ...lines.slice(markerIndex + 1)
+            ...lines.slice(foldLineIndex + 1)
         ];
 
         editorRef.setLines(newLines);
 
-        // Only delete stored content if this was the LAST marker with this ID
-        // (accounting for the one we just removed)
-        if (markerIndices.length <= 1) {
-            this.foldedContent.delete(foldId);
-        }
+        // Remove stored content
+        this.foldedContent.delete(foldId);
 
         this.notifyChange();
         console.log(`Expanded fold ${foldId}: restored ${stored.lineCount} lines`);
@@ -256,8 +249,8 @@ class FoldManager {
                     label: line.text || line.raw.replace(/^#+\s*/, '')
                 };
             }
-            // Stop at fold markers - don't cross fold boundaries
-            if (line.type === 'fold-marker') {
+            // Stop at folded headers - don't cross fold boundaries
+            if (line.type === 'header' && line.isFolded) {
                 return null;
             }
         }
@@ -280,8 +273,8 @@ class FoldManager {
 
         const currentLine = parsedLines[lineNumber];
 
-        // Don't detect on fold markers
-        if (currentLine.type === 'fold-marker') {
+        // Don't detect on already-folded lines
+        if (currentLine.isFolded) {
             return null;
         }
 
@@ -374,17 +367,15 @@ class FoldManager {
 
     /**
      * Find end of header section
-     * Includes any folded subheaders (fold markers) within the section
+     * Includes folded subheaders within the section
      */
     findHeaderEnd(startLine, level, parsedLines) {
         for (let i = startLine + 1; i < parsedLines.length; i++) {
             const line = parsedLines[i];
-            // Stop at header of same or higher level
+            // Stop at header of same or higher level (folded or not)
             if (line.type === 'header' && line.level <= level) {
                 return i - 1;
             }
-            // Fold markers are included - they represent folded subheaders
-            // that should be part of the parent fold
         }
         return parsedLines.length - 1;
     }
