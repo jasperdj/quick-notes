@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>folded - Advanced Markdown Editor</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div id="app">
+        <header class="header">
+            <div class="header-left">
+                <h1 class="app-title">folded</h1>
+            </div>
+            <div class="header-center">
+                <span id="document-name">Untitled</span>
+            </div>
+            <div class="header-right">
+                <span id="save-indicator" class="save-indicator"></span>
+            </div>
+        </header>
+
+        <main class="editor-container">
+            <div class="editor-wrapper">
+                <textarea id="editor" class="editor" spellcheck="false" autocomplete="off"></textarea>
+                <div id="overlay" class="overlay"></div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <div class="footer-left">
+                <span id="line-count">0 lines</span>
+            </div>
+            <div class="footer-center">
+                <span id="cursor-pos">Ln 1, Col 1</span>
+            </div>
+            <div class="footer-right">
+                <span id="mode-indicator">Edit</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Core modules -->
+    <script type="module" src="js/modules/storage.js"></script>
+    <script type="module" src="js/modules/editor.js"></script>
+    <script type="module" src="js/modules/document.js"></script>
+    <script type="module" src="js/modules/parser.js"></script>
+    <script type="module" src="js/modules/renderer.js"></script>
+
+    <!-- Main application -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

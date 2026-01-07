@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Tests - folded</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .test {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 3px solid #666;
+        }
+        .test.pass {
+            border-color: #4ec9b0;
+            background: #1a2e27;
+        }
+        .test.fail {
+            border-color: #f48771;
+            background: #2e1a1a;
+        }
+        .summary {
+            margin-top: 20px;
+            padding: 15px;
+            background: #252526;
+            border: 1px solid #3e3e42;
+        }
+    </style>
+</head>
+<body>
+    <h1>Storage Module Tests</h1>
+    <div id="results"></div>
+    <div id="summary" class="summary"></div>
+
+    <script type="module">
+        import storage from '../js/modules/storage.js';
+
+        const results = document.getElementById('results');
+        const summary = document.getElementById('summary');
+        let passed = 0;
+        let failed = 0;
+
+        function log(message, success = true) {
+            const div = document.createElement('div');
+            div.className = `test ${success ? 'pass' : 'fail'}`;
+            div.textContent = `${success ? '✓' : '✗'} ${message}`;
+            results.appendChild(div);
+            if (success) passed++;
+            else failed++;
+        }
+
+        async function runTests() {
+            try {
+                // Test 1: Initialize database
+                await storage.initDB();
+                log('Database initialized successfully');
+
+                // Test 2: Save a document
+                const testDoc = await storage.saveDocument('test-1', 'Hello, world!', {
+                    name: 'Test Document'
+                });
+                log('Save document: ' + (testDoc ? 'PASS' : 'FAIL'), !!testDoc);
+
+                // Test 3: Load the document
+                const loadedDoc = await storage.loadDocument('test-1');
+                log('Load document: ' + (loadedDoc && loadedDoc.content === 'Hello, world!' ? 'PASS' : 'FAIL'),
+                    loadedDoc && loadedDoc.content === 'Hello, world!');
+
+                // Test 4: Verify metadata
+                log('Document metadata: ' + (loadedDoc && loadedDoc.name === 'Test Document' ? 'PASS' : 'FAIL'),
+                    loadedDoc && loadedDoc.name === 'Test Document');
+
+                // Test 5: Update document
+                const updatedDoc = await storage.saveDocument('test-1', 'Updated content', {
+                    name: 'Updated Document'
+                });
+                const reloadedDoc = await storage.loadDocument('test-1');
+                log('Update document: ' + (reloadedDoc && reloadedDoc.content === 'Updated content' ? 'PASS' : 'FAIL'),
+                    reloadedDoc && reloadedDoc.content === 'Updated content');
+
+                // Test 6: List documents
+                await storage.saveDocument('test-2', 'Second document', { name: 'Doc 2' });
+                await storage.saveDocument('test-3', 'Third document', { name: 'Doc 3' });
+                const allDocs = await storage.listDocuments();
+                log('List documents: ' + (allDocs.length >= 3 ? 'PASS' : 'FAIL'), allDocs.length >= 3);
+
+                // Test 7: Save setting
+                const settingSaved = await storage.saveSetting('theme', 'dark');
+                log('Save setting: ' + (settingSaved ? 'PASS' : 'FAIL'), settingSaved);
+
+                // Test 8: Load setting
+                const theme = await storage.loadSetting('theme');
+                log('Load setting: ' + (theme === 'dark' ? 'PASS' : 'FAIL'), theme === 'dark');
+
+                // Test 9: Load missing setting with default
+                const missing = await storage.loadSetting('nonexistent', 'default-value');
+                log('Load missing setting with default: ' + (missing === 'default-value' ? 'PASS' : 'FAIL'),
+                    missing === 'default-value');
+
+                // Test 10: Large document (100KB)
+                const largeContent = 'A'.repeat(100 * 1024);
+                const largeDoc = await storage.saveDocument('large-test', largeContent, { name: 'Large Doc' });
+                const loadedLarge = await storage.loadDocument('large-test');
+                log('Large document (100KB): ' + (loadedLarge && loadedLarge.content.length === 100 * 1024 ? 'PASS' : 'FAIL'),
+                    loadedLarge && loadedLarge.content.length === 100 * 1024);
+
+                // Test 11: Delete document
+                const deleted = await storage.deleteDocument('test-2');
+                const deletedDoc = await storage.loadDocument('test-2');
+                log('Delete document: ' + (deleted && !deletedDoc ? 'PASS' : 'FAIL'), deleted && !deletedDoc);
+
+                // Test 12: Verify sorting (most recent first)
+                const sortedDocs = await storage.listDocuments();
+                const isOrderCorrect = sortedDocs.length > 1 &&
+                    sortedDocs[0].modified >= sortedDocs[1].modified;
+                log('Documents sorted by modified date: ' + (isOrderCorrect ? 'PASS' : 'FAIL'), isOrderCorrect);
+
+            } catch (error) {
+                log('Test suite error: ' + error.message, false);
+                console.error(error);
+            }
+
+            // Summary
+            const total = passed + failed;
+            summary.innerHTML = `
+                <strong>Test Summary</strong><br>
+                Total: ${total}<br>
+                Passed: ${passed} (${Math.round(passed / total * 100)}%)<br>
+                Failed: ${failed}<br>
+                <br>
+                ${failed === 0 ? '✓ All tests passed!' : '⚠ Some tests failed'}
+            `;
+        }
+
+        runTests();
+    </script>
+</body>
+</html>
