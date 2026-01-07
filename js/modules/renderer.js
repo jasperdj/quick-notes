@@ -10,6 +10,7 @@ import foldManager from './folding.js';
 class Renderer {
     constructor() {
         this.overlay = null;
+        this.foldGutter = null;
         this.editor = null;
         this.parser = null;
         this.renderScheduled = false;
@@ -24,9 +25,15 @@ class Renderer {
         this.editor = editorInstance;
         this.parser = parserInstance;
         this.overlay = document.getElementById('overlay');
+        this.foldGutter = document.getElementById('fold-gutter');
 
         if (!this.overlay) {
             console.error('Overlay element not found');
+            return false;
+        }
+
+        if (!this.foldGutter) {
+            console.error('Fold gutter element not found');
             return false;
         }
 
@@ -40,8 +47,13 @@ class Renderer {
             this.scheduleRender();
         });
 
-        // Set up click handlers for fold indicators
+        // Set up click handlers for fold indicators in overlay
         this.setupFoldClickHandlers();
+
+        // Sync fold gutter scroll with editor
+        this.editor.textarea.addEventListener('scroll', () => {
+            this.syncGutterScroll();
+        });
 
         console.log('Renderer initialized');
         return true;
@@ -75,15 +87,64 @@ class Renderer {
         const html = this.renderLines(parsed);
         this.overlay.innerHTML = html;
 
+        // Render fold gutter separately
+        this.renderFoldGutter(parsed);
+
         // Re-attach fold click handlers after render
         this.attachFoldElementHandlers();
 
         // Sync scroll positions
         this.syncScroll();
+        this.syncGutterScroll();
+    }
+
+    /**
+     * Sync fold gutter scroll with editor
+     */
+    syncGutterScroll() {
+        if (this.foldGutter && this.editor.textarea) {
+            this.foldGutter.scrollTop = this.editor.textarea.scrollTop;
+        }
+    }
+
+    /**
+     * Render the fold gutter with clickable icons
+     * @param {array} parsedLines - Parsed line objects
+     */
+    renderFoldGutter(parsedLines) {
+        if (!this.foldGutter) return;
+
+        const icons = [];
+
+        for (let i = 0; i < parsedLines.length; i++) {
+            // Check if this line starts a collapsed fold
+            const fold = this.getFoldStartingAtLine(i);
+
+            if (fold && fold.collapsed) {
+                // Show collapsed fold icon
+                icons.push(`<div class="fold-gutter-icon collapsed" data-fold-id="${fold.id}" data-line="${i}">▶</div>`);
+                // Add empty placeholders for hidden lines
+                for (let j = i + 1; j <= fold.endLine; j++) {
+                    icons.push(`<div class="fold-gutter-icon" style="visibility:hidden;">·</div>`);
+                }
+                i = fold.endLine;
+            } else {
+                // Check if line is foldable
+                const canFold = this.canFoldAtLine(i, parsedLines);
+                if (canFold) {
+                    icons.push(`<div class="fold-gutter-icon" data-line="${i}">▼</div>`);
+                } else {
+                    icons.push(`<div class="fold-gutter-icon" style="visibility:hidden;">·</div>`);
+                }
+            }
+        }
+
+        this.foldGutter.innerHTML = icons.join('');
     }
 
     /**
      * Render parsed lines to HTML
+     * Fold icons are now rendered separately in the gutter
      * @param {array} parsedLines - Array of parsed line objects
      * @returns {string} HTML string
      */
@@ -109,18 +170,8 @@ class Renderer {
                 // Skip to the line after the fold
                 i = fold.endLine;
             } else {
-                // Check if line is foldable (but not currently folded)
-                const isFoldable = this.canFoldAtLine(i, parsedLines);
-
-                if (isFoldable) {
-                    // Render line with fold indicator
-                    const renderedLine = this.renderLine(line);
-                    const foldIcon = '<span class="fold-icon" data-line="' + i + '">▼</span> ';
-                    lines.push(foldIcon + renderedLine);
-                } else {
-                    // Normal line
-                    lines.push(this.renderLine(line));
-                }
+                // Render normal line (fold icons are in gutter now)
+                lines.push(this.renderLine(line));
             }
         }
 
@@ -293,10 +344,35 @@ class Renderer {
 
     /**
      * Attach click handlers directly to fold elements after render
-     * This is necessary because overlay has pointer-events: none
      */
     attachFoldElementHandlers() {
-        // Handle fold indicator clicks (collapsed folds)
+        // Handle fold gutter icon clicks (both expand and collapse)
+        const gutterIcons = this.foldGutter.querySelectorAll('.fold-gutter-icon');
+        gutterIcons.forEach(icon => {
+            icon.addEventListener('click', (e) => {
+                e.stopPropagation();
+
+                // Check if this is a collapsed fold (has fold-id)
+                const foldId = icon.dataset.foldId;
+                if (foldId) {
+                    // Toggle existing fold
+                    foldManager.toggleFold(foldId);
+                    return;
+                }
+
+                // Otherwise, create new fold at this line
+                const lineNumber = parseInt(icon.dataset.line);
+                if (!isNaN(lineNumber)) {
+                    const parsed = this.parser.getParsedLines();
+                    const region = foldManager.detectFoldableRegion(lineNumber, parsed);
+                    if (region) {
+                        foldManager.createFold(region.startLine, region.endLine, region.label);
+                    }
+                }
+            });
+        });
+
+        // Handle fold indicator clicks in overlay (for collapsed folds)
         const foldIndicators = this.overlay.querySelectorAll('.fold-indicator');
         foldIndicators.forEach(indicator => {
             indicator.addEventListener('click', (e) => {
@@ -304,24 +380,6 @@ class Renderer {
                 const foldId = indicator.dataset.foldId;
                 if (foldId) {
                     foldManager.toggleFold(foldId);
-                    // Render will be triggered automatically via onChange
-                }
-            });
-        });
-
-        // Handle fold icon clicks (expandable lines)
-        const foldIcons = this.overlay.querySelectorAll('.fold-icon');
-        foldIcons.forEach(icon => {
-            icon.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const lineNumber = parseInt(icon.dataset.line);
-                if (!isNaN(lineNumber)) {
-                    // Create fold at this line
-                    const parsed = this.parser.getParsedLines();
-                    const region = foldManager.detectFoldableRegion(lineNumber, parsed);
-                    if (region) {
-                        foldManager.createFold(region.startLine, region.endLine, region.label);
-                    }
                 }
             });
         });
