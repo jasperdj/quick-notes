@@ -189,7 +189,7 @@ This file tracks all architectural and implementation decisions made during Phas
 
 ---
 
-## 2026-01-06 - Performance: Dual-Render Strategy for Mobile
+## 2026-01-06 - Performance: Dual-Render Strategy (Universal)
 
 **Context:** Android users experienced ~300ms visual lag when typing - characters appeared delayed.
 
@@ -204,34 +204,42 @@ This file tracks all architectural and implementation decisions made during Phas
 2. Reduce debounce to 0ms - same issue, still have parse + render time
 3. Disable syntax highlighting on mobile - fixes lag but removes feature
 4. Dual-render strategy - immediate plain text, then delayed syntax highlighting
+5. Apply dual-render only to mobile - adds device detection complexity
+6. Apply dual-render universally - simpler, benefits everyone
 
-**Decision:** Dual-render strategy for mobile devices
+**Decision:** Dual-render strategy applied universally (all devices)
 
 **Implementation:**
-- Detect mobile via user agent string
-- On mobile typing:
+- On every keystroke (all devices):
   1. Immediate: `requestAnimationFrame()` → `overlay.textContent = content` (instant, no parsing)
   2. Debounced: 100ms later → full syntax highlight render
-- Desktop unchanged (still uses single debounced render)
 - Use `textContent` instead of `innerHTML` for speed (no HTML parsing needed)
+- No device detection needed
 
 **Reasoning:**
 - User sees typed characters IMMEDIATELY (0ms lag)
 - Syntax highlighting appears shortly after (100ms)
 - Best of both worlds: responsiveness + features
 - `requestAnimationFrame()` syncs with browser paint cycle
-- Mobile-specific optimization, desktop unaffected
+- Simpler code without device detection
+- Everyone benefits from instant feedback (not just mobile)
+- Easier to maintain and debug
 
 **Trade-offs:**
-- Slight complexity in render logic
-- Two render passes on mobile (but second is debounced)
+- Two render passes instead of one (minimal overhead)
 - Brief moment where text is plain before highlighting appears
-- But: Worth it for instant feedback
+- But: `textContent` assignment is extremely fast, worth it for instant feedback
+
+**Refinement (2026-01-07):**
+- Initially implemented with mobile detection
+- Simplified to apply universally after realizing device detection added unnecessary complexity
+- No reason to limit instant feedback to mobile only
+- Cleaner code, consistent behavior across platforms
 
 **Validation:**
-- Test on Android: typing should feel instant
+- Test on Android: typing should feel instant ✓
+- Test on desktop: typing should also feel instant ✓
 - Syntax highlighting should appear ~100ms after typing stops
-- Desktop behavior unchanged
-- No performance degradation
+- No performance degradation on any platform
 
 ---
