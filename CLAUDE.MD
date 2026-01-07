@@ -401,11 +401,24 @@ Every time you start working on folded, follow this sequence:
        - If complete: Remove your entry OR mark as "Complete"
        - This frees up the feature for other instances!
 
-[ ] 6. Commit your work
+[ ] 6. Update ARCHITECTURE.md (if architecture changed)
+       - Update module responsibilities
+       - Update data flow diagrams
+       - Document new integrations
+       - Reflect any architectural decisions
+
+[ ] 7. Create TESTING.md or update it with:
+       - Clear testing instructions for the feature you worked on
+       - Expected behaviors and outcomes
+       - Sample test data/scenarios
+       - What success looks like
+       - Known limitations or edge cases
+
+[ ] 8. Commit your work
        - Clear, descriptive commit message
        - Reference progress files in commit body
 
-[ ] 7. Push to branch
+[ ] 9. Push to branch
        - Ensure work is backed up
 ```
 
