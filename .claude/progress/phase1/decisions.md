@@ -188,3 +188,50 @@ This file tracks all architectural and implementation decisions made during Phas
 - All 12 storage tests still passing
 
 ---
+
+## 2026-01-06 - Performance: Dual-Render Strategy for Mobile
+
+**Context:** Android users experienced ~300ms visual lag when typing - characters appeared delayed.
+
+**Problem:**
+- Debounce delay (100ms) + parse time (~50-100ms) + render time (~50-100ms) = ~300ms total lag
+- Every keystroke triggered full document re-parse and re-render
+- Mobile browsers are slower than desktop
+- Unacceptable typing experience
+
+**Options Considered:**
+1. Remove debounce entirely - would work but hurt performance on rapid typing
+2. Reduce debounce to 0ms - same issue, still have parse + render time
+3. Disable syntax highlighting on mobile - fixes lag but removes feature
+4. Dual-render strategy - immediate plain text, then delayed syntax highlighting
+
+**Decision:** Dual-render strategy for mobile devices
+
+**Implementation:**
+- Detect mobile via user agent string
+- On mobile typing:
+  1. Immediate: `requestAnimationFrame()` → `overlay.textContent = content` (instant, no parsing)
+  2. Debounced: 100ms later → full syntax highlight render
+- Desktop unchanged (still uses single debounced render)
+- Use `textContent` instead of `innerHTML` for speed (no HTML parsing needed)
+
+**Reasoning:**
+- User sees typed characters IMMEDIATELY (0ms lag)
+- Syntax highlighting appears shortly after (100ms)
+- Best of both worlds: responsiveness + features
+- `requestAnimationFrame()` syncs with browser paint cycle
+- Mobile-specific optimization, desktop unaffected
+
+**Trade-offs:**
+- Slight complexity in render logic
+- Two render passes on mobile (but second is debounced)
+- Brief moment where text is plain before highlighting appears
+- But: Worth it for instant feedback
+
+**Validation:**
+- Test on Android: typing should feel instant
+- Syntax highlighting should appear ~100ms after typing stops
+- Desktop behavior unchanged
+- No performance degradation
+
+---
