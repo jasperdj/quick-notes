@@ -196,9 +196,9 @@ body {
 }
 
 .syntax-code-block {
-    background: var(--bg-tertiary);
     color: #ce9178;
     transition: opacity 0.15s ease, color 0.15s ease;
+    /* No background - would cover cursor in textarea beneath */
 }
 
 .syntax-code-block.folded {
@@ -232,14 +232,16 @@ body {
 
 /* Fold button - clickable triangle to fold content */
 .fold-button {
-    display: inline-block;
+    position: absolute;
+    left: -16px;
+    top: 0;
     color: var(--text-secondary);
     cursor: pointer;
     pointer-events: auto;
     user-select: none;
     opacity: 0.6;
-    margin-right: 4px;
     font-size: 0.7em;
+    line-height: var(--line-height);
     transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
                 opacity 0.15s ease,
                 color 0.15s ease;
@@ -287,4 +289,5 @@ body {
     display: block;
     min-height: calc(var(--font-size) * var(--line-height));
     line-height: var(--line-height);
+    position: relative;
 }

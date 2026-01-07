@@ -374,6 +374,7 @@ class FoldManager {
 
     /**
      * Find end of header section
+     * Includes any folded subheaders (fold markers) within the section
      */
     findHeaderEnd(startLine, level, parsedLines) {
         for (let i = startLine + 1; i < parsedLines.length; i++) {
@@ -382,10 +383,8 @@ class FoldManager {
             if (line.type === 'header' && line.level <= level) {
                 return i - 1;
             }
-            // Stop at fold markers (don't fold across them)
-            if (line.type === 'fold-marker') {
-                return i - 1;
-            }
+            // Fold markers are included - they represent folded subheaders
+            // that should be part of the parent fold
         }
         return parsedLines.length - 1;
     }
