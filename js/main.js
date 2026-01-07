@@ -35,6 +35,10 @@ class FoldedApp {
             renderer.initialize(editor, parser);
             console.log('✓ Renderer initialized');
 
+            // Initialize fold manager with editor reference
+            foldManager.setEditor(editor);
+            console.log('✓ Fold manager initialized');
+
             // Initialize document manager
             await doc.initialize();
             console.log('✓ Document manager initialized');
@@ -173,18 +177,31 @@ class FoldedApp {
 
     /**
      * Smart fold at cursor position
+     * - If on a fold marker, expand it
+     * - Otherwise, detect and create a fold
      */
     foldAtCursor() {
         const cursor = editor.getCursor();
         const parsed = parser.getParsedLines();
 
+        // Check if cursor is on a fold marker - if so, expand it
+        const currentLine = parsed[cursor.line];
+        if (currentLine && currentLine.type === 'fold-marker') {
+            const expanded = foldManager.expandFold(currentLine.foldId);
+            if (expanded) {
+                console.log(`Expanded fold: ${currentLine.foldId}`);
+            }
+            return;
+        }
+
+        // Try to create a fold at cursor position
         const region = foldManager.detectFoldableRegion(cursor.line, parsed);
         if (region) {
             const foldId = foldManager.createFold(region.startLine, region.endLine, region.label);
             if (foldId) {
                 console.log(`Created fold: ${region.label} (lines ${region.startLine}-${region.endLine})`);
             } else {
-                console.log('Could not create fold (may overlap with existing fold)');
+                console.log('Could not create fold');
             }
         } else {
             console.log('No foldable region detected at cursor');

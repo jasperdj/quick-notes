@@ -1,200 +1,233 @@
 /**
- * Folding Module - Advanced folding system for folded
- * Allows arbitrary fold points with smart detection
+ * Folding Module - Content-based folding system for folded
+ *
+ * NEW ARCHITECTURE: Folds actually modify the document content
+ * - When collapsing: removes lines from document, stores them, inserts marker
+ * - When expanding: removes marker, restores original lines
+ * - This keeps textarea and overlay always in sync (single source of truth)
  */
+
+import editor from './editor.js';
+
+// Fold marker format: <!--FOLD:foldId:label:lineCount-->
+const FOLD_MARKER_REGEX = /^<!--FOLD:([^:]+):([^:]*):(\d+)-->$/;
 
 class FoldManager {
     constructor() {
-        this.folds = new Map(); // foldId -> fold object
-        this.lineToFolds = new Map(); // lineNumber -> Set of foldIds
+        // Stores the actual content that was folded
+        // foldId -> { lines: string[], label: string, lineCount: number }
+        this.foldedContent = new Map();
+
         this.nextFoldId = 1;
         this.changeCallbacks = [];
     }
 
     /**
-     * Create a new fold
-     * @param {number} startLine - Start line (inclusive, 0-indexed)
-     * @param {number} endLine - End line (inclusive, 0-indexed)
-     * @param {string} label - Optional label for the fold
-     * @returns {string} Fold ID
+     * Set the editor reference (called during initialization)
+     * @param {object} editorInstance - The editor module instance
      */
-    createFold(startLine, endLine, label = null) {
-        // Validate input
-        if (startLine < 0 || endLine < startLine) {
+    setEditor(editorInstance) {
+        this.editor = editorInstance;
+    }
+
+    /**
+     * Create a fold marker string
+     * @param {string} foldId - Fold ID
+     * @param {string} label - Display label
+     * @param {number} lineCount - Number of hidden lines
+     * @returns {string} Fold marker string
+     */
+    createMarker(foldId, label, lineCount) {
+        // Escape colons in label to prevent parsing issues
+        const safeLabel = label.replace(/:/g, '∶'); // Using Unicode colon
+        return `<!--FOLD:${foldId}:${safeLabel}:${lineCount}-->`;
+    }
+
+    /**
+     * Parse a fold marker string
+     * @param {string} line - Line to parse
+     * @returns {object|null} { foldId, label, lineCount } or null
+     */
+    parseMarker(line) {
+        const match = line.match(FOLD_MARKER_REGEX);
+        if (!match) return null;
+
+        return {
+            foldId: match[1],
+            label: match[2].replace(/∶/g, ':'), // Restore colons
+            lineCount: parseInt(match[3], 10)
+        };
+    }
+
+    /**
+     * Check if a line is a fold marker
+     * @param {string} line - Line to check
+     * @returns {boolean}
+     */
+    isMarker(line) {
+        return FOLD_MARKER_REGEX.test(line);
+    }
+
+    /**
+     * Create a new fold - ACTUALLY MODIFIES THE DOCUMENT
+     * @param {number} startLine - Start line (the header/trigger line, kept visible)
+     * @param {number} endLine - End line (inclusive, will be hidden)
+     * @param {string} label - Label for the fold indicator
+     * @returns {string|null} Fold ID or null if failed
+     */
+    createFold(startLine, endLine, label = 'Folded') {
+        const editorRef = this.editor || editor;
+
+        // Validate
+        if (startLine < 0 || endLine <= startLine) {
             console.error('Invalid fold range:', startLine, endLine);
             return null;
         }
 
-        // Check for overlapping folds
-        const overlaps = this.getOverlappingFolds(startLine, endLine);
-        if (overlaps.length > 0) {
-            console.warn('Overlapping folds detected - merging or preventing');
-            // For now, prevent overlapping folds
-            // Can be enhanced to support nested folds later
+        const lines = editorRef.getLines();
+        if (endLine >= lines.length) {
+            endLine = lines.length - 1;
+        }
+
+        // Check if trying to fold a fold marker
+        if (this.isMarker(lines[startLine])) {
+            console.warn('Cannot fold a fold marker');
             return null;
         }
 
-        const foldId = `fold-${this.nextFoldId++}`;
-        const fold = {
-            id: foldId,
-            startLine,
-            endLine,
-            collapsed: true, // Folds are collapsed by default
-            label: label || this.generateLabel(startLine, endLine)
-        };
+        // Calculate what to fold
+        // Keep startLine visible, fold startLine+1 through endLine
+        const foldStartIndex = startLine + 1;
+        const linesToFold = lines.slice(foldStartIndex, endLine + 1);
+        const lineCount = linesToFold.length;
 
-        this.folds.set(foldId, fold);
-        this.indexFold(fold);
+        if (lineCount === 0) {
+            console.warn('No lines to fold');
+            return null;
+        }
+
+        // Generate fold ID
+        const foldId = `fold-${this.nextFoldId++}`;
+
+        // Store the folded content
+        this.foldedContent.set(foldId, {
+            lines: linesToFold,
+            label: label,
+            lineCount: lineCount
+        });
+
+        // Create the marker
+        const marker = this.createMarker(foldId, label, lineCount);
+
+        // Modify the document: remove folded lines, insert marker
+        // The marker goes right after startLine (replacing the folded content)
+        const newLines = [
+            ...lines.slice(0, foldStartIndex),
+            marker,
+            ...lines.slice(endLine + 1)
+        ];
+
+        editorRef.setLines(newLines);
 
         this.notifyChange();
-        console.log('Created fold:', fold);
+        console.log(`Created fold ${foldId}: "${label}" (${lineCount} lines)`);
         return foldId;
     }
 
     /**
-     * Remove a fold
-     * @param {string} foldId - Fold ID to remove
-     * @returns {boolean} Success status
+     * Expand a fold - RESTORES THE ORIGINAL CONTENT
+     * @param {string} foldId - Fold ID to expand
+     * @returns {boolean} Success
      */
-    removeFold(foldId) {
-        const fold = this.folds.get(foldId);
-        if (!fold) {
+    expandFold(foldId) {
+        const editorRef = this.editor || editor;
+
+        // Get stored content
+        const stored = this.foldedContent.get(foldId);
+        if (!stored) {
+            console.error('Fold content not found:', foldId);
             return false;
         }
 
-        this.unindexFold(fold);
-        this.folds.delete(foldId);
+        // Find the marker in the document
+        const lines = editorRef.getLines();
+        let markerIndex = -1;
+
+        for (let i = 0; i < lines.length; i++) {
+            const parsed = this.parseMarker(lines[i]);
+            if (parsed && parsed.foldId === foldId) {
+                markerIndex = i;
+                break;
+            }
+        }
+
+        if (markerIndex === -1) {
+            console.error('Fold marker not found in document:', foldId);
+            // Clean up orphaned content
+            this.foldedContent.delete(foldId);
+            return false;
+        }
+
+        // Replace marker with stored lines
+        const newLines = [
+            ...lines.slice(0, markerIndex),
+            ...stored.lines,
+            ...lines.slice(markerIndex + 1)
+        ];
+
+        editorRef.setLines(newLines);
+
+        // Remove from storage
+        this.foldedContent.delete(foldId);
 
         this.notifyChange();
-        console.log('Removed fold:', foldId);
+        console.log(`Expanded fold ${foldId}: restored ${stored.lineCount} lines`);
         return true;
     }
 
     /**
-     * Toggle fold collapsed state
-     * @param {string} foldId - Fold ID to toggle
-     * @returns {boolean} New collapsed state
+     * Toggle a fold by ID
+     * @param {string} foldId - Fold ID
+     * @returns {boolean} True if now collapsed, false if now expanded, null if error
      */
     toggleFold(foldId) {
-        const fold = this.folds.get(foldId);
-        if (!fold) {
-            console.error('Fold not found:', foldId);
-            return null;
+        // If we have stored content, the fold is collapsed - expand it
+        if (this.foldedContent.has(foldId)) {
+            this.expandFold(foldId);
+            return false; // Now expanded
         }
 
-        fold.collapsed = !fold.collapsed;
-        this.notifyChange();
-        console.log('Toggled fold:', foldId, 'collapsed:', fold.collapsed);
-        return fold.collapsed;
+        // Fold doesn't exist in our storage - can't toggle
+        console.warn('Cannot toggle fold - not found:', foldId);
+        return null;
     }
 
     /**
-     * Collapse a fold
-     * @param {string} foldId - Fold ID
-     * @returns {boolean} Success status
-     */
-    collapseFold(foldId) {
-        const fold = this.folds.get(foldId);
-        if (!fold) return false;
-
-        fold.collapsed = true;
-        this.notifyChange();
-        return true;
-    }
-
-    /**
-     * Expand a fold
-     * @param {string} foldId - Fold ID
-     * @returns {boolean} Success status
-     */
-    expandFold(foldId) {
-        const fold = this.folds.get(foldId);
-        if (!fold) return false;
-
-        fold.collapsed = false;
-        this.notifyChange();
-        return true;
-    }
-
-    /**
-     * Get all folds
-     * @returns {array} Array of fold objects
+     * Get all active (collapsed) folds
+     * @returns {array} Array of { foldId, label, lineCount }
      */
     getAllFolds() {
-        return Array.from(this.folds.values());
+        return Array.from(this.foldedContent.entries()).map(([foldId, data]) => ({
+            foldId,
+            label: data.label,
+            lineCount: data.lineCount
+        }));
     }
 
     /**
-     * Get folds that overlap with a range
-     * @param {number} startLine - Start line
-     * @param {number} endLine - End line
-     * @returns {array} Array of overlapping folds
+     * Check if a fold is collapsed
+     * @param {string} foldId - Fold ID
+     * @returns {boolean}
      */
-    getOverlappingFolds(startLine, endLine) {
-        const overlapping = [];
-
-        for (const fold of this.folds.values()) {
-            // Check if ranges overlap
-            if (!(endLine < fold.startLine || startLine > fold.endLine)) {
-                overlapping.push(fold);
-            }
-        }
-
-        return overlapping;
+    isCollapsed(foldId) {
+        return this.foldedContent.has(foldId);
     }
 
     /**
-     * Get fold at a specific line
-     * @param {number} lineNumber - Line number
-     * @returns {object|null} Fold object or null
-     */
-    getFoldAtLine(lineNumber) {
-        const foldIds = this.lineToFolds.get(lineNumber);
-        if (!foldIds || foldIds.size === 0) {
-            return null;
-        }
-
-        // Return the first fold (for now, assuming no nested folds)
-        const foldId = Array.from(foldIds)[0];
-        return this.folds.get(foldId);
-    }
-
-    /**
-     * Check if a line is visible (not hidden by a fold)
-     * @param {number} lineNumber - Line number to check
-     * @returns {boolean} True if visible
-     */
-    isLineVisible(lineNumber) {
-        for (const fold of this.folds.values()) {
-            if (fold.collapsed &&
-                lineNumber > fold.startLine &&
-                lineNumber <= fold.endLine) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Get array of visible line numbers
-     * @param {number} totalLines - Total number of lines in document
-     * @returns {array} Array of visible line numbers
-     */
-    getVisibleLines(totalLines) {
-        const visible = [];
-        for (let i = 0; i < totalLines; i++) {
-            if (this.isLineVisible(i)) {
-                visible.push(i);
-            }
-        }
-        return visible;
-    }
-
-    /**
-     * Detect foldable region at cursor
+     * Detect foldable region at cursor position
      * @param {number} lineNumber - Current line number
-     * @param {object} parsedLines - Array of parsed lines from parser
-     * @returns {object|null} {startLine, endLine, type} or null
+     * @param {array} parsedLines - Array of parsed lines from parser
+     * @returns {object|null} { startLine, endLine, type, label } or null
      */
     detectFoldableRegion(lineNumber, parsedLines) {
         if (!parsedLines || lineNumber >= parsedLines.length) {
@@ -203,7 +236,12 @@ class FoldManager {
 
         const currentLine = parsedLines[lineNumber];
 
-        // Header folding: fold from header to next header of same/higher level
+        // Don't detect on fold markers
+        if (currentLine.type === 'fold-marker') {
+            return null;
+        }
+
+        // Header folding
         if (currentLine.type === 'header') {
             const endLine = this.findHeaderEnd(lineNumber, currentLine.level, parsedLines);
             if (endLine > lineNumber) {
@@ -211,7 +249,7 @@ class FoldManager {
                     startLine: lineNumber,
                     endLine,
                     type: 'header',
-                    label: currentLine.text
+                    label: currentLine.text || currentLine.raw.replace(/^#+\s*/, '')
                 };
             }
         }
@@ -224,7 +262,7 @@ class FoldManager {
                     startLine: lineNumber,
                     endLine,
                     type: 'code-block',
-                    label: `Code block (${currentLine.lang || 'plain'})`
+                    label: `Code (${currentLine.lang || 'plain'})`
                 };
             }
         }
@@ -257,36 +295,29 @@ class FoldManager {
             }
         }
 
-        // Note: Paragraph folding removed - regular text lines should not be foldable
-        // Users can still fold text by selecting it (future feature)
-
         return null;
     }
 
     /**
      * Find end of header section
-     * @param {number} startLine - Header line number
-     * @param {number} level - Header level
-     * @param {array} parsedLines - Parsed lines
-     * @returns {number} End line number
      */
     findHeaderEnd(startLine, level, parsedLines) {
         for (let i = startLine + 1; i < parsedLines.length; i++) {
             const line = parsedLines[i];
-            // Stop at header of same or higher level (lower number)
+            // Stop at header of same or higher level
             if (line.type === 'header' && line.level <= level) {
                 return i - 1;
             }
+            // Stop at fold markers (don't fold across them)
+            if (line.type === 'fold-marker') {
+                return i - 1;
+            }
         }
-        // Fold to end of document
         return parsedLines.length - 1;
     }
 
     /**
      * Find end of code block
-     * @param {number} startLine - Code fence line number
-     * @param {array} parsedLines - Parsed lines
-     * @returns {number} End line number
      */
     findCodeBlockEnd(startLine, parsedLines) {
         for (let i = startLine + 1; i < parsedLines.length; i++) {
@@ -294,15 +325,11 @@ class FoldManager {
                 return i;
             }
         }
-        // If no closing fence, fold to end
         return parsedLines.length - 1;
     }
 
     /**
      * Find end of list
-     * @param {number} startLine - List line number
-     * @param {array} parsedLines - Parsed lines
-     * @returns {number} End line number
      */
     findListEnd(startLine, parsedLines) {
         const startIndent = parsedLines[startLine].indent || 0;
@@ -313,13 +340,11 @@ class FoldManager {
                              line.type === 'list-unordered' ||
                              line.type === 'checkbox';
 
-            // Continue if it's a list item at same or deeper indent
-            if (isListItem && (line.indent || 0) >= startIndent) {
-                continue;
+            if (!isListItem && line.raw.trim() !== '') {
+                return i - 1;
             }
 
-            // Stop if it's not a list item or shallower indent
-            if (!isListItem || (line.indent || 0) < startIndent) {
+            if (isListItem && (line.indent || 0) < startIndent) {
                 return i - 1;
             }
         }
@@ -329,9 +354,6 @@ class FoldManager {
 
     /**
      * Find end of blockquote
-     * @param {number} startLine - Blockquote line number
-     * @param {array} parsedLines - Parsed lines
-     * @returns {number} End line number
      */
     findBlockquoteEnd(startLine, parsedLines) {
         for (let i = startLine + 1; i < parsedLines.length; i++) {
@@ -343,24 +365,7 @@ class FoldManager {
     }
 
     /**
-     * Find end of paragraph
-     * @param {number} startLine - Paragraph start line
-     * @param {array} parsedLines - Parsed lines
-     * @returns {number} End line number
-     */
-    findParagraphEnd(startLine, parsedLines) {
-        for (let i = startLine + 1; i < parsedLines.length; i++) {
-            const line = parsedLines[i];
-            // Stop at empty line or non-text line
-            if (line.type !== 'text' || line.raw.trim() === '') {
-                return i - 1;
-            }
-        }
-        return parsedLines.length - 1;
-    }
-
-    /**
-     * Fold all foldable regions
+     * Fold all foldable regions in the document
      * @param {array} parsedLines - Parsed lines from parser
      * @returns {number} Number of folds created
      */
@@ -368,17 +373,26 @@ class FoldManager {
         let count = 0;
         let i = 0;
 
+        // Process from end to start to avoid line number shifting issues
+        const regionsToFold = [];
+
         while (i < parsedLines.length) {
             const region = this.detectFoldableRegion(i, parsedLines);
             if (region && region.endLine > region.startLine) {
-                const foldId = this.createFold(region.startLine, region.endLine, region.label);
-                if (foldId) {
-                    count++;
-                    i = region.endLine + 1; // Skip past folded region
-                    continue;
-                }
+                regionsToFold.push(region);
+                i = region.endLine + 1;
+            } else {
+                i++;
             }
-            i++;
+        }
+
+        // Fold in reverse order (from bottom to top)
+        for (let j = regionsToFold.length - 1; j >= 0; j--) {
+            const region = regionsToFold[j];
+            const foldId = this.createFold(region.startLine, region.endLine, region.label);
+            if (foldId) {
+                count++;
+            }
         }
 
         console.log(`Folded ${count} regions`);
@@ -386,61 +400,27 @@ class FoldManager {
     }
 
     /**
-     * Unfold all folds
-     * @returns {number} Number of folds removed
+     * Unfold all folds in the document
+     * @returns {number} Number of folds expanded
      */
     unfoldAll() {
-        const count = this.folds.size;
-        this.folds.clear();
-        this.lineToFolds.clear();
-        this.notifyChange();
+        const editorRef = this.editor || editor;
+        const foldIds = Array.from(this.foldedContent.keys());
+        let count = 0;
+
+        // Expand in reverse order of creation to maintain line positions
+        for (const foldId of foldIds.reverse()) {
+            if (this.expandFold(foldId)) {
+                count++;
+            }
+        }
+
         console.log(`Unfolded ${count} regions`);
         return count;
     }
 
     /**
-     * Index a fold for quick lookup
-     * @param {object} fold - Fold object
-     */
-    indexFold(fold) {
-        for (let line = fold.startLine; line <= fold.endLine; line++) {
-            if (!this.lineToFolds.has(line)) {
-                this.lineToFolds.set(line, new Set());
-            }
-            this.lineToFolds.get(line).add(fold.id);
-        }
-    }
-
-    /**
-     * Remove fold from index
-     * @param {object} fold - Fold object
-     */
-    unindexFold(fold) {
-        for (let line = fold.startLine; line <= fold.endLine; line++) {
-            const foldIds = this.lineToFolds.get(line);
-            if (foldIds) {
-                foldIds.delete(fold.id);
-                if (foldIds.size === 0) {
-                    this.lineToFolds.delete(line);
-                }
-            }
-        }
-    }
-
-    /**
-     * Generate a label for a fold
-     * @param {number} startLine - Start line
-     * @param {number} endLine - End line
-     * @returns {string} Label
-     */
-    generateLabel(startLine, endLine) {
-        const lineCount = endLine - startLine;
-        return `${lineCount} line${lineCount !== 1 ? 's' : ''} folded`;
-    }
-
-    /**
      * Register a change callback
-     * @param {function} callback - Function to call when folds change
      */
     onChange(callback) {
         this.changeCallbacks.push(callback);
@@ -454,61 +434,85 @@ class FoldManager {
     }
 
     /**
-     * Clear all folds
+     * Clear all folds (without restoring content - use unfoldAll for that)
      */
     clear() {
-        this.folds.clear();
-        this.lineToFolds.clear();
+        this.foldedContent.clear();
         this.notifyChange();
     }
 
     /**
      * Get fold state for persistence
-     * @returns {array} Array of fold objects (without methods)
+     * @returns {object} State object with foldedContent
      */
     getState() {
-        return Array.from(this.folds.values()).map(fold => ({
-            id: fold.id,
-            startLine: fold.startLine,
-            endLine: fold.endLine,
-            collapsed: fold.collapsed,
-            label: fold.label
-        }));
+        const state = {
+            nextFoldId: this.nextFoldId,
+            folds: []
+        };
+
+        for (const [foldId, data] of this.foldedContent.entries()) {
+            state.folds.push({
+                foldId,
+                lines: data.lines,
+                label: data.label,
+                lineCount: data.lineCount
+            });
+        }
+
+        return state;
     }
 
     /**
      * Restore fold state from persistence
-     * @param {array} state - Array of fold objects
+     * Note: This assumes the document already has the fold markers in place
+     * @param {object} state - State object from getState()
      */
     setState(state) {
-        this.clear();
+        this.foldedContent.clear();
 
-        if (!state || !Array.isArray(state)) {
+        if (!state || !state.folds) {
             return;
         }
 
-        for (const fold of state) {
-            const foldId = fold.id || `fold-${this.nextFoldId++}`;
-            const foldObj = {
-                id: foldId,
-                startLine: fold.startLine,
-                endLine: fold.endLine,
-                collapsed: fold.collapsed !== false, // Default to collapsed
-                label: fold.label || this.generateLabel(fold.startLine, fold.endLine)
-            };
+        // Restore nextFoldId
+        if (state.nextFoldId) {
+            this.nextFoldId = state.nextFoldId;
+        }
 
-            this.folds.set(foldId, foldObj);
-            this.indexFold(foldObj);
+        // Restore folded content
+        for (const fold of state.folds) {
+            this.foldedContent.set(fold.foldId, {
+                lines: fold.lines,
+                label: fold.label,
+                lineCount: fold.lineCount
+            });
 
-            // Update nextFoldId to avoid collisions
-            const idNum = parseInt(foldId.replace('fold-', ''));
+            // Update nextFoldId if needed
+            const idNum = parseInt(fold.foldId.replace('fold-', ''));
             if (!isNaN(idNum) && idNum >= this.nextFoldId) {
                 this.nextFoldId = idNum + 1;
             }
         }
 
         this.notifyChange();
-        console.log(`Restored ${state.length} folds`);
+        console.log(`Restored ${state.folds.length} folds`);
+    }
+
+    /**
+     * Find fold marker at a specific line
+     * @param {number} lineNumber - Line number to check
+     * @returns {object|null} Parsed marker info or null
+     */
+    getMarkerAtLine(lineNumber) {
+        const editorRef = this.editor || editor;
+        const lines = editorRef.getLines();
+
+        if (lineNumber < 0 || lineNumber >= lines.length) {
+            return null;
+        }
+
+        return this.parseMarker(lines[lineNumber]);
     }
 }
 
