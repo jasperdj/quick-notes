@@ -99,8 +99,14 @@ class Renderer {
             // Track code block state to know if fence is opening or closing
             let isOpeningFence = false;
             if (line.type === 'code-fence') {
-                isOpeningFence = !inCodeBlock;
-                inCodeBlock = !inCodeBlock;
+                // Folded code fences are self-contained (closing fence is hidden)
+                // So they don't toggle the inCodeBlock state
+                if (line.isFolded) {
+                    isOpeningFence = true; // Always opening (content + closing hidden)
+                } else {
+                    isOpeningFence = !inCodeBlock;
+                    inCodeBlock = !inCodeBlock;
+                }
             }
 
             lines.push(`<div class="overlay-line">${this.renderLine(line, isOpeningFence)}</div>`);

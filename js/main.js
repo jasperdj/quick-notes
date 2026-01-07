@@ -149,6 +149,10 @@ class FoldedApp {
         const editorTextarea = document.getElementById('editor');
         if (!editorTextarea) return;
 
+        // Prevent duplicate handler registration
+        if (editorTextarea._foldClipboardHandlerInstalled) return;
+        editorTextarea._foldClipboardHandlerInstalled = true;
+
         // Zero-width characters used for fold encoding
         const ZWS = '\u200B';
         const ZWNJ = '\u200C';
@@ -162,23 +166,34 @@ class FoldedApp {
         const hasFoldMarkers = (text) => createFoldRegex().test(text);
 
         // Expand folded content and strip fold suffixes from copied text
+        // Store reference to app for use in handler
+        const app = this;
         editorTextarea.addEventListener('copy', (e) => {
-            const selection = editor.getSelection();
+            // Get selection directly from textarea (editor.getSelection may be stale)
+            const selection = editorTextarea.value.substring(
+                editorTextarea.selectionStart,
+                editorTextarea.selectionEnd
+            );
+
             if (selection && hasFoldMarkers(selection)) {
                 e.preventDefault();
                 // Expand any folded content in the selection
-                const expanded = this.expandFoldedTextForClipboard(selection);
+                const expanded = app.expandFoldedTextForClipboard(selection);
                 e.clipboardData.setData('text/plain', expanded);
             }
         });
 
         // Expand folded content and strip fold suffixes from cut text
         editorTextarea.addEventListener('cut', (e) => {
-            const selection = editor.getSelection();
+            // Get selection directly from textarea
+            const selection = editorTextarea.value.substring(
+                editorTextarea.selectionStart,
+                editorTextarea.selectionEnd
+            );
             if (selection && hasFoldMarkers(selection)) {
                 e.preventDefault();
                 // Expand any folded content in the selection
-                const expanded = this.expandFoldedTextForClipboard(selection);
+                const expanded = app.expandFoldedTextForClipboard(selection);
                 e.clipboardData.setData('text/plain', expanded);
 
                 // Delete the selected text (including invisible markers)

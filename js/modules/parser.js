@@ -27,7 +27,8 @@ class Parser {
             const parsed = this.parseLine(this.lines[i], i, { inCodeBlock, codeBlockLang });
 
             // Update code block state
-            if (parsed.type === 'code-fence') {
+            // Folded code fences are self-contained (include closing fence), so don't toggle state
+            if (parsed.type === 'code-fence' && !parsed.isFolded) {
                 if (!inCodeBlock) {
                     inCodeBlock = true;
                     codeBlockLang = parsed.lang || '';
