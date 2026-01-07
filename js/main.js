@@ -154,28 +154,32 @@ class FoldedApp {
         const ZWNJ = '\u200C';
         const ZWJ = '\u200D';
         const BOM = '\uFEFF';
-        const FOLD_SUFFIX_REGEX = new RegExp(`${ZWS}[${ZWNJ}${ZWJ}]+${BOM}`, 'g');
+
+        // Create fresh regex each time to avoid lastIndex issues with global flag
+        const createFoldRegex = () => new RegExp(`${ZWS}[${ZWNJ}${ZWJ}]+${BOM}`, 'g');
 
         // Check if text contains invisible fold markers
-        const hasFoldMarkers = (text) => FOLD_SUFFIX_REGEX.test(text);
+        const hasFoldMarkers = (text) => createFoldRegex().test(text);
 
-        // Strip fold suffixes from copied text
+        // Expand folded content and strip fold suffixes from copied text
         editorTextarea.addEventListener('copy', (e) => {
             const selection = editor.getSelection();
             if (selection && hasFoldMarkers(selection)) {
                 e.preventDefault();
-                const cleaned = selection.replace(FOLD_SUFFIX_REGEX, '');
-                e.clipboardData.setData('text/plain', cleaned);
+                // Expand any folded content in the selection
+                const expanded = this.expandFoldedTextForClipboard(selection);
+                e.clipboardData.setData('text/plain', expanded);
             }
         });
 
-        // Strip fold suffixes from cut text
+        // Expand folded content and strip fold suffixes from cut text
         editorTextarea.addEventListener('cut', (e) => {
             const selection = editor.getSelection();
             if (selection && hasFoldMarkers(selection)) {
                 e.preventDefault();
-                const cleaned = selection.replace(FOLD_SUFFIX_REGEX, '');
-                e.clipboardData.setData('text/plain', cleaned);
+                // Expand any folded content in the selection
+                const expanded = this.expandFoldedTextForClipboard(selection);
+                e.clipboardData.setData('text/plain', expanded);
 
                 // Delete the selected text (including invisible markers)
                 const start = editorTextarea.selectionStart;
@@ -186,6 +190,43 @@ class FoldedApp {
                 editorTextarea.selectionEnd = start;
                 editorTextarea.dispatchEvent(new Event('input'));
             }
+        });
+    }
+
+    /**
+     * Expand folded content for clipboard
+     * Replaces fold suffixes with the actual hidden content
+     * @param {string} text - Text that may contain fold suffixes
+     * @returns {string} Expanded text with fold content restored
+     */
+    expandFoldedTextForClipboard(text) {
+        // Zero-width characters used for fold encoding
+        const ZWS = '\u200B';
+        const ZWNJ = '\u200C';
+        const ZWJ = '\u200D';
+        const BOM = '\uFEFF';
+        const FOLD_SUFFIX_REGEX = new RegExp(`${ZWS}[${ZWNJ}${ZWJ}]+${BOM}`, 'g');
+
+        // Decode fold ID from invisible characters
+        const decodeFoldId = (encoded) => {
+            const bits = encoded.slice(1, -1);
+            let binary = '';
+            for (const char of bits) {
+                binary += char === ZWJ ? '1' : '0';
+            }
+            return parseInt(binary, 2);
+        };
+
+        // Replace each fold suffix with newline + stored content
+        return text.replace(FOLD_SUFFIX_REGEX, (match) => {
+            const foldId = decodeFoldId(match);
+            const stored = foldManager.foldedContent.get(foldId);
+            if (stored && stored.lines) {
+                // Return newline + the folded lines joined with newlines
+                return '\n' + stored.lines.join('\n');
+            }
+            // If no stored content, just remove the suffix
+            return '';
         });
     }
 
