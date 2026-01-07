@@ -59,6 +59,10 @@ class FoldedApp {
             this.setupCursorTracking();
             console.log('✓ Cursor tracking set up');
 
+            // Set up clipboard handling (strip fold suffixes)
+            this.setupClipboardHandling();
+            console.log('✓ Clipboard handling set up');
+
             // Set up before unload handler
             this.setupBeforeUnload();
             console.log('✓ Before unload handler set up');
@@ -135,6 +139,46 @@ class FoldedApp {
 
         // Initial update
         updateCursorPos();
+    }
+
+    /**
+     * Set up clipboard handling to strip fold suffixes
+     * Prevents duplicate fold IDs when copy/pasting folded headers
+     */
+    setupClipboardHandling() {
+        const editorTextarea = document.getElementById('editor');
+        if (!editorTextarea) return;
+
+        // Strip fold suffixes from copied text
+        editorTextarea.addEventListener('copy', (e) => {
+            const selection = editor.getSelection();
+            if (selection && selection.includes('⟨')) {
+                e.preventDefault();
+                // Remove fold suffixes: ⟨number⟩
+                const cleaned = selection.replace(/\s*⟨\d+⟩/g, '');
+                e.clipboardData.setData('text/plain', cleaned);
+            }
+        });
+
+        // Strip fold suffixes from cut text
+        editorTextarea.addEventListener('cut', (e) => {
+            const selection = editor.getSelection();
+            if (selection && selection.includes('⟨')) {
+                e.preventDefault();
+                // Remove fold suffixes from clipboard
+                const cleaned = selection.replace(/\s*⟨\d+⟩/g, '');
+                e.clipboardData.setData('text/plain', cleaned);
+
+                // Delete the selected text (including fold suffix)
+                const start = editorTextarea.selectionStart;
+                const end = editorTextarea.selectionEnd;
+                const content = editorTextarea.value;
+                editorTextarea.value = content.substring(0, start) + content.substring(end);
+                editorTextarea.selectionStart = start;
+                editorTextarea.selectionEnd = start;
+                editorTextarea.dispatchEvent(new Event('input'));
+            }
+        });
     }
 
     /**
