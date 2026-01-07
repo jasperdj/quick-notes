@@ -133,12 +133,35 @@ class FoldedApp {
             if (cursorElement) {
                 cursorElement.textContent = `Ln ${pos.line + 1}, Col ${pos.col + 1}`;
             }
+
+            // If cursor lands on fold marker (by click), move it down
+            this.moveCursorOffFoldMarker(pos.line);
         };
 
         editor.onSelectionChange(updateCursorPos);
 
         // Initial update
         updateCursorPos();
+    }
+
+    /**
+     * If cursor is on a fold marker line, move it to the next line
+     * @param {number} lineNumber - Current cursor line
+     */
+    moveCursorOffFoldMarker(lineNumber) {
+        const parsed = parser.getParsedLines();
+        if (!parsed || lineNumber >= parsed.length) return;
+
+        const currentLine = parsed[lineNumber];
+        if (currentLine && currentLine.type === 'fold-marker') {
+            // Move cursor to next line (or stay if at end)
+            const nextLine = lineNumber + 1;
+            if (nextLine < parsed.length) {
+                setTimeout(() => {
+                    editor.setCursor(nextLine, 0);
+                }, 0);
+            }
+        }
     }
 
     /**

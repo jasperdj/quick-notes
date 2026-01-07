@@ -9,8 +9,8 @@
 
 import editor from './editor.js';
 
-// Fold marker format: <!--FOLD:foldId:label:lineCount-->
-const FOLD_MARKER_REGEX = /^<!--FOLD:([^:]+):([^:]*):(\d+)-->$/;
+// Fold marker format: «F:id:label:n» (short to fit behind visual indicator)
+const FOLD_MARKER_REGEX = /^«F:(\d+):([^:]*):(\d+)»$/;
 
 class FoldManager {
     constructor() {
@@ -32,15 +32,15 @@ class FoldManager {
 
     /**
      * Create a fold marker string
-     * @param {string} foldId - Fold ID
+     * @param {number} foldId - Fold ID (number only)
      * @param {string} label - Display label
      * @param {number} lineCount - Number of hidden lines
      * @returns {string} Fold marker string
      */
     createMarker(foldId, label, lineCount) {
-        // Escape colons in label to prevent parsing issues
-        const safeLabel = label.replace(/:/g, '∶'); // Using Unicode colon
-        return `<!--FOLD:${foldId}:${safeLabel}:${lineCount}-->`;
+        // Escape colons in label, truncate to keep marker short
+        const safeLabel = label.replace(/:/g, '∶').substring(0, 20);
+        return `«F:${foldId}:${safeLabel}:${lineCount}»`;
     }
 
     /**
@@ -53,7 +53,7 @@ class FoldManager {
         if (!match) return null;
 
         return {
-            foldId: match[1],
+            foldId: parseInt(match[1], 10),
             label: match[2].replace(/∶/g, ':'), // Restore colons
             lineCount: parseInt(match[3], 10)
         };
@@ -106,8 +106,8 @@ class FoldManager {
             return null;
         }
 
-        // Generate fold ID
-        const foldId = `fold-${this.nextFoldId++}`;
+        // Generate fold ID (just a number now)
+        const foldId = this.nextFoldId++;
 
         // Store the folded content
         this.foldedContent.set(foldId, {
@@ -126,6 +126,12 @@ class FoldManager {
             marker,
             ...lines.slice(endLine + 1)
         ];
+
+        // Ensure there's always at least one line after the fold marker
+        // so cursor has somewhere to go
+        if (newLines[newLines.length - 1].match(/^«F:\d+:[^:]*:\d+»$/)) {
+            newLines.push('');
+        }
 
         editorRef.setLines(newLines);
 
@@ -537,8 +543,8 @@ class FoldManager {
                 lineCount: fold.lineCount
             });
 
-            // Update nextFoldId if needed
-            const idNum = parseInt(fold.foldId.replace('fold-', ''));
+            // Update nextFoldId if needed (foldId is now a number)
+            const idNum = typeof fold.foldId === 'number' ? fold.foldId : parseInt(fold.foldId);
             if (!isNaN(idNum) && idNum >= this.nextFoldId) {
                 this.nextFoldId = idNum + 1;
             }

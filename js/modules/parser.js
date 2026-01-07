@@ -62,12 +62,12 @@ class Parser {
     parseLine(line, lineNumber, context = {}) {
         const trimmed = line.trim();
 
-        // Fold markers: <!--FOLD:foldId:label:lineCount-->
-        const foldMatch = line.match(/^<!--FOLD:([^:]+):([^:]*):(\d+)-->$/);
+        // Fold markers: «F:id:label:n» (short format)
+        const foldMatch = line.match(/^«F:(\d+):([^:]*):(\d+)»$/);
         if (foldMatch) {
             return {
                 type: 'fold-marker',
-                foldId: foldMatch[1],
+                foldId: parseInt(foldMatch[1], 10),
                 label: foldMatch[2].replace(/∶/g, ':'), // Restore Unicode colons
                 lineCount: parseInt(foldMatch[3], 10),
                 raw: line,

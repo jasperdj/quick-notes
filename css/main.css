@@ -219,25 +219,23 @@ body {
 /* Folding */
 
 /* Fold indicator - clickable element showing folded content */
+/* Must stay within single line height to avoid cursor misalignment */
 .fold-indicator {
-    display: inline-block;
+    display: inline;
     color: var(--text-secondary);
     cursor: pointer;
     pointer-events: auto;
     user-select: none;
-    padding: 2px 8px;
-    border-radius: 4px;
     background: var(--bg-tertiary);
-    border-left: 3px solid var(--accent);
-    transition: all 0.2s ease;
+    border-radius: 2px;
+    padding: 0 4px;
     font-weight: 500;
+    line-height: inherit;
 }
 
 .fold-indicator:hover {
     background: var(--border);
     color: var(--accent);
-    border-left-color: var(--success);
-    transform: translateX(2px);
 }
 
 .fold-indicator:active {

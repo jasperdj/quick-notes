@@ -194,8 +194,8 @@ class Renderer {
         foldIndicators.forEach(indicator => {
             indicator.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const foldId = indicator.dataset.foldId;
-                if (foldId) {
+                const foldId = parseInt(indicator.dataset.foldId, 10);
+                if (!isNaN(foldId)) {
                     foldManager.expandFold(foldId);
                 }
             });
