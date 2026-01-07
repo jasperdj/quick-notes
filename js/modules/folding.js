@@ -2,15 +2,27 @@
  * Folding Module - Content-based folding system for folded
  *
  * ARCHITECTURE: Folds modify the document content
- * - When collapsing: removes lines, appends ⟨id⟩ suffix to header/fence
+ * - When collapsing: removes lines, appends invisible suffix to header/fence
  * - When expanding: removes suffix, restores original lines
  * - Single source of truth: fold state is in the document itself
+ *
+ * Invisible encoding uses zero-width Unicode characters:
+ * - U+200B (Zero Width Space) - start marker
+ * - U+200C (ZWNJ) - binary 0
+ * - U+200D (ZWJ) - binary 1
+ * - U+FEFF (BOM) - end marker
  */
 
 import editor from './editor.js';
 
-// Fold suffix format: ⟨id⟩ appended to header/code-fence line
-const FOLD_SUFFIX_REGEX = /\s*⟨(\d+)⟩$/;
+// Zero-width characters for invisible fold encoding
+const ZWS = '\u200B';   // Start marker
+const ZWNJ = '\u200C';  // Binary 0
+const ZWJ = '\u200D';   // Binary 1
+const BOM = '\uFEFF';   // End marker
+
+// Regex to detect invisible fold suffix
+const FOLD_SUFFIX_REGEX = new RegExp(`${ZWS}[${ZWNJ}${ZWJ}]+${BOM}$`);
 
 class FoldManager {
     constructor() {
@@ -31,12 +43,43 @@ class FoldManager {
     }
 
     /**
-     * Create a fold suffix string
+     * Encode a fold ID as invisible zero-width characters
      * @param {number} foldId - Fold ID
-     * @returns {string} Fold suffix like " ⟨1⟩"
+     * @returns {string} Invisible string encoding the ID
+     */
+    encodeFoldId(foldId) {
+        // Convert to binary and encode each bit
+        const binary = foldId.toString(2);
+        let encoded = ZWS; // Start marker
+        for (const bit of binary) {
+            encoded += bit === '1' ? ZWJ : ZWNJ;
+        }
+        encoded += BOM; // End marker
+        return encoded;
+    }
+
+    /**
+     * Decode a fold ID from invisible characters
+     * @param {string} encoded - The invisible suffix
+     * @returns {number} The fold ID
+     */
+    decodeFoldId(encoded) {
+        // Strip start and end markers
+        const bits = encoded.slice(1, -1);
+        let binary = '';
+        for (const char of bits) {
+            binary += char === ZWJ ? '1' : '0';
+        }
+        return parseInt(binary, 2);
+    }
+
+    /**
+     * Create a fold suffix string (invisible)
+     * @param {number} foldId - Fold ID
+     * @returns {string} Invisible fold suffix
      */
     createSuffix(foldId) {
-        return ` ⟨${foldId}⟩`;
+        return this.encodeFoldId(foldId);
     }
 
     /**
@@ -48,8 +91,11 @@ class FoldManager {
         const match = line.match(FOLD_SUFFIX_REGEX);
         if (!match) return null;
 
+        const encoded = match[0];
+        const foldId = this.decodeFoldId(encoded);
+
         return {
-            foldId: parseInt(match[1], 10),
+            foldId,
             baseLine: line.replace(FOLD_SUFFIX_REGEX, '')
         };
     }

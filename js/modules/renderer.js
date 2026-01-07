@@ -110,6 +110,16 @@ class Renderer {
     }
 
     /**
+     * Strip invisible fold markers from text
+     * @param {string} text - Text to clean
+     * @returns {string} Text without invisible markers
+     */
+    stripInvisible(text) {
+        // Remove zero-width fold encoding characters
+        return text.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+    }
+
+    /**
      * Render a single parsed line
      * @param {object} line - Parsed line object (includes isFolded, foldId if folded)
      * @param {boolean} isOpeningFence - Whether this code-fence is opening (not closing)
@@ -119,10 +129,10 @@ class Renderer {
         switch (line.type) {
             case 'header':
                 // For folded headers, show the text without the suffix
-                // line.text is the header text, line.raw includes the suffix
+                // line.text is the header text, line.raw includes the invisible suffix
                 const headerDisplay = line.isFolded
                     ? `${'#'.repeat(line.level)} ${line.text}`
-                    : line.raw;
+                    : this.stripInvisible(line.raw);
                 const headerClass = line.isFolded ? 'syntax-header folded' : 'syntax-header';
                 const headerDataAttr = line.isFolded
                     ? `data-fold-id="${line.foldId}"`
@@ -133,10 +143,10 @@ class Renderer {
             case 'code-fence':
                 // Only show fold button on opening fence, not closing fence
                 if (isOpeningFence) {
-                    // For folded code fences, show without the suffix
+                    // For folded code fences, show without the invisible suffix
                     const fenceDisplay = line.isFolded
                         ? '```' + (line.lang || '')
-                        : line.raw;
+                        : this.stripInvisible(line.raw);
                     const codeClass = line.isFolded ? 'syntax-code-block folded' : 'syntax-code-block';
                     const codeDataAttr = line.isFolded
                         ? `data-fold-id="${line.foldId}"`
@@ -145,7 +155,7 @@ class Renderer {
                            `<span class="${codeClass}">${this.escapeHtml(fenceDisplay)}</span>`;
                 } else {
                     // Closing fence - no fold button
-                    return `<span class="syntax-code-block">${this.escapeHtml(line.raw)}</span>`;
+                    return `<span class="syntax-code-block">${this.escapeHtml(this.stripInvisible(line.raw))}</span>`;
                 }
 
             case 'code-block-line':

@@ -142,20 +142,29 @@ class FoldedApp {
     }
 
     /**
-     * Set up clipboard handling to strip fold suffixes
+     * Set up clipboard handling to strip invisible fold markers
      * Prevents duplicate fold IDs when copy/pasting folded headers
      */
     setupClipboardHandling() {
         const editorTextarea = document.getElementById('editor');
         if (!editorTextarea) return;
 
+        // Zero-width characters used for fold encoding
+        const ZWS = '\u200B';
+        const ZWNJ = '\u200C';
+        const ZWJ = '\u200D';
+        const BOM = '\uFEFF';
+        const FOLD_SUFFIX_REGEX = new RegExp(`${ZWS}[${ZWNJ}${ZWJ}]+${BOM}`, 'g');
+
+        // Check if text contains invisible fold markers
+        const hasFoldMarkers = (text) => FOLD_SUFFIX_REGEX.test(text);
+
         // Strip fold suffixes from copied text
         editorTextarea.addEventListener('copy', (e) => {
             const selection = editor.getSelection();
-            if (selection && selection.includes('⟨')) {
+            if (selection && hasFoldMarkers(selection)) {
                 e.preventDefault();
-                // Remove fold suffixes: ⟨number⟩
-                const cleaned = selection.replace(/\s*⟨\d+⟩/g, '');
+                const cleaned = selection.replace(FOLD_SUFFIX_REGEX, '');
                 e.clipboardData.setData('text/plain', cleaned);
             }
         });
@@ -163,13 +172,12 @@ class FoldedApp {
         // Strip fold suffixes from cut text
         editorTextarea.addEventListener('cut', (e) => {
             const selection = editor.getSelection();
-            if (selection && selection.includes('⟨')) {
+            if (selection && hasFoldMarkers(selection)) {
                 e.preventDefault();
-                // Remove fold suffixes from clipboard
-                const cleaned = selection.replace(/\s*⟨\d+⟩/g, '');
+                const cleaned = selection.replace(FOLD_SUFFIX_REGEX, '');
                 e.clipboardData.setData('text/plain', cleaned);
 
-                // Delete the selected text (including fold suffix)
+                // Delete the selected text (including invisible markers)
                 const start = editorTextarea.selectionStart;
                 const end = editorTextarea.selectionEnd;
                 const content = editorTextarea.value;

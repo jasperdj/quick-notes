@@ -62,28 +62,52 @@ class Parser {
     parseLine(line, lineNumber, context = {}) {
         const trimmed = line.trim();
 
-        // Headers with fold suffix: # Header ⟨id⟩
+        // Zero-width characters for invisible fold detection
+        const ZWS = '\u200B';
+        const ZWNJ = '\u200C';
+        const ZWJ = '\u200D';
+        const BOM = '\uFEFF';
+        const FOLD_SUFFIX_REGEX = new RegExp(`${ZWS}[${ZWNJ}${ZWJ}]+${BOM}$`);
+
+        // Helper to decode fold ID from invisible characters
+        const decodeFoldId = (encoded) => {
+            const bits = encoded.slice(1, -1);
+            let binary = '';
+            for (const char of bits) {
+                binary += char === ZWJ ? '1' : '0';
+            }
+            return parseInt(binary, 2);
+        };
+
+        // Headers with invisible fold suffix
         // Check this BEFORE regular headers
-        const foldedHeaderMatch = line.match(/^(#{1,6})\s+(.+?)\s*⟨(\d+)⟩$/);
-        if (foldedHeaderMatch) {
+        const hasFoldSuffix = FOLD_SUFFIX_REGEX.test(line);
+        const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
+
+        if (headerMatch && hasFoldSuffix) {
+            const suffixMatch = line.match(FOLD_SUFFIX_REGEX);
+            const foldId = decodeFoldId(suffixMatch[0]);
+            const text = headerMatch[2].replace(FOLD_SUFFIX_REGEX, '');
             return {
                 type: 'header',
-                level: foldedHeaderMatch[1].length,
-                text: foldedHeaderMatch[2],
-                foldId: parseInt(foldedHeaderMatch[3], 10),
+                level: headerMatch[1].length,
+                text: text,
+                foldId: foldId,
                 isFolded: true,
                 raw: line,
                 lineNumber
             };
         }
 
-        // Code fence with fold suffix: ```lang ⟨id⟩
-        const foldedCodeMatch = line.match(/^```(\w*)\s*⟨(\d+)⟩$/);
-        if (foldedCodeMatch) {
+        // Code fence with invisible fold suffix
+        const codeFenceMatch = line.match(/^```(\w*)/);
+        if (codeFenceMatch && hasFoldSuffix) {
+            const suffixMatch = line.match(FOLD_SUFFIX_REGEX);
+            const foldId = decodeFoldId(suffixMatch[0]);
             return {
                 type: 'code-fence',
-                lang: foldedCodeMatch[1] || '',
-                foldId: parseInt(foldedCodeMatch[2], 10),
+                lang: codeFenceMatch[1] || '',
+                foldId: foldId,
                 isFolded: true,
                 raw: line,
                 lineNumber
