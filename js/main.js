@@ -63,10 +63,6 @@ class FoldedApp {
             this.setupFoldMarkerNavigation();
             console.log('✓ Fold marker navigation set up');
 
-            // Set up clipboard handling (expand folds on copy)
-            this.setupClipboardHandling();
-            console.log('✓ Clipboard handling set up');
-
             // Set up before unload handler
             this.setupBeforeUnload();
             console.log('✓ Before unload handler set up');
@@ -199,60 +195,6 @@ class FoldedApp {
                         editor.setCursor(skipToLine, cursor.col);
                     }
                 }
-            }
-        });
-    }
-
-    /**
-     * Set up clipboard handling to expand fold markers on copy/cut
-     * When copying text that contains fold markers, replace them with actual content
-     */
-    setupClipboardHandling() {
-        const editorTextarea = document.getElementById('editor');
-        if (!editorTextarea) return;
-
-        const expandFoldMarkers = (text) => {
-            // Regex to match fold markers: «F:id:label:n»
-            const foldMarkerRegex = /«F:(\d+):([^:]*):(\d+)»/g;
-
-            return text.replace(foldMarkerRegex, (match, foldIdStr) => {
-                const foldId = parseInt(foldIdStr, 10);
-                const stored = foldManager.foldedContent.get(foldId);
-                if (stored && stored.lines) {
-                    // Return the actual folded content
-                    return stored.lines.join('\n');
-                }
-                // If content not found, return empty string
-                return '';
-            });
-        };
-
-        editorTextarea.addEventListener('copy', (e) => {
-            const selection = editor.getSelection();
-            if (selection && selection.includes('«F:')) {
-                e.preventDefault();
-                const expanded = expandFoldMarkers(selection);
-                e.clipboardData.setData('text/plain', expanded);
-            }
-        });
-
-        editorTextarea.addEventListener('cut', (e) => {
-            const selection = editor.getSelection();
-            if (selection && selection.includes('«F:')) {
-                e.preventDefault();
-                const expanded = expandFoldMarkers(selection);
-                e.clipboardData.setData('text/plain', expanded);
-
-                // Delete the selected text (including fold markers)
-                const start = editorTextarea.selectionStart;
-                const end = editorTextarea.selectionEnd;
-                const content = editorTextarea.value;
-                editorTextarea.value = content.substring(0, start) + content.substring(end);
-                editorTextarea.selectionStart = start;
-                editorTextarea.selectionEnd = start;
-
-                // Trigger change callbacks
-                editor.triggerInputCallback();
             }
         });
     }
