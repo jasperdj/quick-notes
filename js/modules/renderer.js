@@ -330,9 +330,10 @@ class Renderer {
         // No icon here - the gutter already shows the triangle
         const lineCount = fold.endLine - fold.startLine;
         const label = fold.label || 'Folded region';
+        const linesWord = lineCount === 1 ? 'line' : 'lines';
 
         return `<span class="fold-indicator" data-fold-id="${fold.id}">` +
-               `${this.escapeHtml(label)} [${lineCount} lines]` +
+               `${this.escapeHtml(label)} [${lineCount} ${linesWord}]` +
                `</span>`;
     }
 

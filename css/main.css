@@ -129,7 +129,7 @@ body {
     font-size: var(--font-size);
     line-height: var(--line-height);
     pointer-events: none;
-    z-index: 0;
+    z-index: 2; /* Above textarea (z-index: 1) so fold-indicator clicks work */
     overflow-y: auto;
     white-space: pre-wrap;
     word-wrap: break-word;
@@ -296,6 +296,8 @@ body {
 /* Fold indicator - shows when folded (replaces the line) */
 .fold-indicator {
     display: inline-block;
+    position: relative;
+    z-index: 5;
     color: var(--text-secondary);
     cursor: pointer;
     pointer-events: auto;
