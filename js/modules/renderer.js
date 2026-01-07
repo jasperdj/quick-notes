@@ -75,6 +75,9 @@ class Renderer {
         const html = this.renderLines(parsed);
         this.overlay.innerHTML = html;
 
+        // Re-attach fold click handlers after render
+        this.attachFoldElementHandlers();
+
         // Sync scroll positions
         this.syncScroll();
     }
@@ -280,24 +283,38 @@ class Renderer {
 
     /**
      * Set up click handlers for fold indicators
+     * Note: This is called once during initialization but doesn't work
+     * because overlay has pointer-events: none. We use attachFoldElementHandlers instead.
      */
     setupFoldClickHandlers() {
-        // Use event delegation on the overlay
-        this.overlay.addEventListener('click', (e) => {
-            const target = e.target;
+        // Event delegation doesn't work when overlay has pointer-events: none
+        // Using attachFoldElementHandlers() after each render instead
+    }
 
-            // Handle collapsed fold indicator clicks
-            if (target.classList.contains('fold-indicator')) {
-                const foldId = target.dataset.foldId;
+    /**
+     * Attach click handlers directly to fold elements after render
+     * This is necessary because overlay has pointer-events: none
+     */
+    attachFoldElementHandlers() {
+        // Handle fold indicator clicks (collapsed folds)
+        const foldIndicators = this.overlay.querySelectorAll('.fold-indicator');
+        foldIndicators.forEach(indicator => {
+            indicator.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const foldId = indicator.dataset.foldId;
                 if (foldId) {
                     foldManager.toggleFold(foldId);
                     // Render will be triggered automatically via onChange
                 }
-            }
+            });
+        });
 
-            // Handle fold icon clicks (on unfoldable lines)
-            if (target.classList.contains('fold-icon')) {
-                const lineNumber = parseInt(target.dataset.line);
+        // Handle fold icon clicks (expandable lines)
+        const foldIcons = this.overlay.querySelectorAll('.fold-icon');
+        foldIcons.forEach(icon => {
+            icon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const lineNumber = parseInt(icon.dataset.line);
                 if (!isNaN(lineNumber)) {
                     // Create fold at this line
                     const parsed = this.parser.getParsedLines();
@@ -306,7 +323,7 @@ class Renderer {
                         foldManager.createFold(region.startLine, region.endLine, region.label);
                     }
                 }
-            }
+            });
         });
     }
 
