@@ -407,18 +407,33 @@ Every time you start working on folded, follow this sequence:
        - Document new integrations
        - Reflect any architectural decisions
 
-[ ] 7. Create TESTING.md or update it with:
-       - Clear testing instructions for the feature you worked on
+[ ] 7. Create/update `.claude/progress/phaseX/{feature}/test-scenarios.md`:
+       - Manual test scenarios for the feature you worked on
        - Expected behaviors and outcomes
        - Sample test data/scenarios
        - What success looks like
        - Known limitations or edge cases
+       - NOTE: Do NOT use TESTING.md in root - use feature-specific test-scenarios.md
 
-[ ] 8. Commit your work
+[ ] 8. Walk through ALL test scenarios in Chrome browser
+       - Execute each test scenario manually
+       - Verify expected outcomes
+       - Document any failures or issues found
+       - Fix issues before closing session
+
+[ ] 9. Update `active-instances.md` in MASTER branch (not PR branch)
+       - Switch to master: `git checkout main`
+       - Update your entry status
+       - Commit directly: `git commit -m "Update active-instances.md"`
+       - Push to master: `git push origin main`
+       - Switch back to feature branch: `git checkout -`
+       - This ensures other Claude instances see your status immediately
+
+[ ] 10. Commit your work
        - Clear, descriptive commit message
        - Reference progress files in commit body
 
-[ ] 9. Push to branch
+[ ] 11. Push to branch
        - Ensure work is backed up
 ```
 
