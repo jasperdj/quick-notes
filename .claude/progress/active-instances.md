@@ -8,6 +8,13 @@ This file tracks which features are currently being worked on to prevent conflic
 
 ## Recently Completed
 
+### Folding - Phase 2 - COMPLETE ✅
+- Instance ID: claude/work-on-folded-XaQua
+- Started: 2026-01-07 (continuing from previous session)
+- Completed: 2026-01-07
+- Summary: Fixed fold indicator z-index for clicking, fixed singular/plural grammar, added test-scenarios.md, validated in Chrome
+- Status: Complete
+
 ### Phase 1: Core Foundation - COMPLETE ✅
 - Instance ID: claude-work-on-folded-heX1n
 - Started: 2026-01-06 22:43:36
