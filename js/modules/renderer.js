@@ -90,20 +90,34 @@ class Renderer {
         for (let i = 0; i < parsedLines.length; i++) {
             const line = parsedLines[i];
 
-            // Check if this line is hidden by a fold
-            if (!foldManager.isLineVisible(i)) {
-                continue; // Skip hidden lines
-            }
-
             // Check if this line starts a fold
             const fold = this.getFoldStartingAtLine(i);
-            if (fold) {
-                // Render fold indicator
+
+            if (fold && fold.collapsed) {
+                // Render fold indicator for collapsed fold
+                const indicator = this.renderFoldIndicator(fold);
+                lines.push(indicator);
+
+                // Add empty lines for hidden content to maintain line alignment
+                for (let j = i + 1; j <= fold.endLine; j++) {
+                    lines.push(''); // Empty line to keep textarea and overlay in sync
+                }
+
+                // Skip to the line after the fold
+                i = fold.endLine;
+            } else if (fold && !fold.collapsed) {
+                // Fold is expanded, render fold indicator
                 const indicator = this.renderFoldIndicator(fold);
                 lines.push(indicator);
             } else {
-                // Render normal line
-                lines.push(this.renderLine(line));
+                // Check if this line is hidden by a fold
+                if (!foldManager.isLineVisible(i)) {
+                    // This shouldn't happen if logic above is correct, but safety check
+                    lines.push('');
+                } else {
+                    // Render normal line
+                    lines.push(this.renderLine(line));
+                }
             }
         }
 
