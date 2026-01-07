@@ -14,7 +14,6 @@ class Renderer {
         this.renderTimer = null;
         this.renderDelay = 100; // milliseconds
         this.immediateRenderScheduled = false;
-        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     }
 
     /**
@@ -45,8 +44,8 @@ class Renderer {
      * Schedule a render with debouncing
      */
     scheduleRender() {
-        // For mobile: immediate plain text update, then debounced syntax highlighting
-        if (this.isMobile && !this.immediateRenderScheduled) {
+        // Immediate plain text update for instant feedback
+        if (!this.immediateRenderScheduled) {
             this.immediateRenderScheduled = true;
             requestAnimationFrame(() => {
                 this.renderPlainText();
@@ -54,7 +53,7 @@ class Renderer {
             });
         }
 
-        // Debounced syntax highlighting for all platforms
+        // Debounced syntax highlighting
         if (this.renderTimer) {
             clearTimeout(this.renderTimer);
         }
@@ -65,14 +64,12 @@ class Renderer {
     }
 
     /**
-     * Immediate plain text render (for mobile responsiveness)
+     * Immediate plain text render (for instant visual feedback)
      */
     renderPlainText() {
         if (!this.overlay) return;
 
         const content = this.editor.getContent();
-        // Escape HTML but render as plain text immediately
-        const escaped = this.escapeHtml(content);
         this.overlay.textContent = content; // textContent is faster than innerHTML
         this.syncScroll();
     }
