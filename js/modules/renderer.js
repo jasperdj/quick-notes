@@ -121,21 +121,19 @@ class Renderer {
             case 'header':
                 const headerFoldId = isFolded && nextLine ? nextLine.foldId : null;
                 const headerClass = isFolded ? 'syntax-header folded' : 'syntax-header';
-                const headerTriangle = isFolded ? '▶' : '▼';
                 const dataAttr = isFolded
                     ? `data-fold-id="${headerFoldId}"`
                     : `data-line="${line.lineNumber}"`;
-                return `<span class="fold-button ${isFolded ? 'folded' : ''}" ${dataAttr}>${headerTriangle}</span>` +
+                return `<span class="fold-button ${isFolded ? 'folded' : ''}" ${dataAttr}>▼</span>` +
                        `<span class="${headerClass}">${this.escapeHtml(line.raw)}</span>`;
 
             case 'code-fence':
                 const codeFoldId = isFolded && nextLine ? nextLine.foldId : null;
                 const codeClass = isFolded ? 'syntax-code-block folded' : 'syntax-code-block';
-                const codeTriangle = isFolded ? '▶' : '▼';
                 const codeDataAttr = isFolded
                     ? `data-fold-id="${codeFoldId}"`
                     : `data-line="${line.lineNumber}"`;
-                return `<span class="fold-button ${isFolded ? 'folded' : ''}" ${codeDataAttr}>${codeTriangle}</span>` +
+                return `<span class="fold-button ${isFolded ? 'folded' : ''}" ${codeDataAttr}>▼</span>` +
                        `<span class="${codeClass}">${this.escapeHtml(line.raw)}</span>`;
 
             case 'code-block-line':
