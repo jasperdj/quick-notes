@@ -217,22 +217,54 @@ body {
 }
 
 /* Folding */
+
+/* Fold icon - shows on foldable items (modern, clean look) */
+.fold-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+    margin-right: 4px;
+    border-radius: 2px;
+    opacity: 0.4;
+    transition: all 0.2s ease;
+    vertical-align: middle;
+}
+
+.fold-icon:hover {
+    opacity: 1;
+    color: var(--accent);
+    background: rgba(0, 122, 204, 0.1);
+    transform: scale(1.1);
+}
+
+/* Fold indicator - shows when folded (replaces the line) */
 .fold-indicator {
     display: inline-block;
     color: var(--text-secondary);
     cursor: pointer;
     pointer-events: auto;
     user-select: none;
-    padding: 2px 4px;
+    padding: 2px 8px;
     margin: 2px 0;
-    border-radius: 3px;
+    border-radius: 4px;
     background: var(--bg-tertiary);
-    transition: background 0.2s ease, color 0.2s ease;
+    border-left: 3px solid var(--accent);
+    transition: all 0.2s ease;
+    font-weight: 500;
 }
 
 .fold-indicator:hover {
     background: var(--border);
     color: var(--accent);
+    border-left-color: var(--success);
+    transform: translateX(2px);
 }
 
 .fold-indicator:active {

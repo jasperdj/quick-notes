@@ -94,7 +94,7 @@ class Renderer {
             const fold = this.getFoldStartingAtLine(i);
 
             if (fold && fold.collapsed) {
-                // Render fold indicator for collapsed fold
+                // Render fold indicator for collapsed fold (replaces the line)
                 const indicator = this.renderFoldIndicator(fold);
                 lines.push(indicator);
 
@@ -105,17 +105,17 @@ class Renderer {
 
                 // Skip to the line after the fold
                 i = fold.endLine;
-            } else if (fold && !fold.collapsed) {
-                // Fold is expanded, render fold indicator
-                const indicator = this.renderFoldIndicator(fold);
-                lines.push(indicator);
             } else {
-                // Check if this line is hidden by a fold
-                if (!foldManager.isLineVisible(i)) {
-                    // This shouldn't happen if logic above is correct, but safety check
-                    lines.push('');
+                // Check if line is foldable (but not currently folded)
+                const isFoldable = this.canFoldAtLine(i, parsedLines);
+
+                if (isFoldable) {
+                    // Render line with fold indicator
+                    const renderedLine = this.renderLine(line);
+                    const foldIcon = '<span class="fold-icon" data-line="' + i + '">▼</span> ';
+                    lines.push(foldIcon + renderedLine);
                 } else {
-                    // Render normal line
+                    // Normal line
                     lines.push(this.renderLine(line));
                 }
             }
@@ -285,6 +285,8 @@ class Renderer {
         // Use event delegation on the overlay
         this.overlay.addEventListener('click', (e) => {
             const target = e.target;
+
+            // Handle collapsed fold indicator clicks
             if (target.classList.contains('fold-indicator')) {
                 const foldId = target.dataset.foldId;
                 if (foldId) {
@@ -292,7 +294,31 @@ class Renderer {
                     // Render will be triggered automatically via onChange
                 }
             }
+
+            // Handle fold icon clicks (on unfoldable lines)
+            if (target.classList.contains('fold-icon')) {
+                const lineNumber = parseInt(target.dataset.line);
+                if (!isNaN(lineNumber)) {
+                    // Create fold at this line
+                    const parsed = this.parser.getParsedLines();
+                    const region = foldManager.detectFoldableRegion(lineNumber, parsed);
+                    if (region) {
+                        foldManager.createFold(region.startLine, region.endLine, region.label);
+                    }
+                }
+            }
         });
+    }
+
+    /**
+     * Check if a line can be folded
+     * @param {number} lineNumber - Line number
+     * @param {array} parsedLines - Parsed lines
+     * @returns {boolean} True if line is foldable
+     */
+    canFoldAtLine(lineNumber, parsedLines) {
+        const region = foldManager.detectFoldableRegion(lineNumber, parsedLines);
+        return region !== null && region.endLine > region.startLine;
     }
 }
 
