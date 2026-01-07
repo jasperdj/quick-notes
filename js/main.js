@@ -8,6 +8,7 @@ import editor from './modules/editor.js';
 import doc from './modules/document.js';
 import parser from './modules/parser.js';
 import renderer from './modules/renderer.js';
+import foldManager from './modules/folding.js';
 
 class FoldedApp {
     constructor() {
@@ -92,6 +93,25 @@ class FoldedApp {
                 e.preventDefault();
                 this.createNewDocument();
             }
+
+            // Cmd/Ctrl + .: Smart fold at cursor
+            if ((e.metaKey || e.ctrlKey) && e.key === '.') {
+                e.preventDefault();
+                this.foldAtCursor();
+            }
+
+            // Cmd/Ctrl + Shift + .: Unfold all
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === '.') {
+                e.preventDefault();
+                foldManager.unfoldAll();
+            }
+
+            // Cmd/Ctrl + Alt + .: Fold all
+            if ((e.metaKey || e.ctrlKey) && e.altKey && e.key === '.') {
+                e.preventDefault();
+                const parsed = parser.getParsedLines();
+                foldManager.foldAll(parsed);
+            }
         });
     }
 
@@ -152,6 +172,26 @@ class FoldedApp {
     }
 
     /**
+     * Smart fold at cursor position
+     */
+    foldAtCursor() {
+        const cursor = editor.getCursor();
+        const parsed = parser.getParsedLines();
+
+        const region = foldManager.detectFoldableRegion(cursor.line, parsed);
+        if (region) {
+            const foldId = foldManager.createFold(region.startLine, region.endLine, region.label);
+            if (foldId) {
+                console.log(`Created fold: ${region.label} (lines ${region.startLine}-${region.endLine})`);
+            } else {
+                console.log('Could not create fold (may overlap with existing fold)');
+            }
+        } else {
+            console.log('No foldable region detected at cursor');
+        }
+    }
+
+    /**
      * Show error message to user
      */
     showError(message) {
@@ -178,7 +218,8 @@ window.folded = {
     editor,
     doc,
     parser,
-    renderer
+    renderer,
+    foldManager
 };
 
 export default app;

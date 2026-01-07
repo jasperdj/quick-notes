@@ -1,10 +1,11 @@
 /**
  * Renderer Module - Syntax highlighting renderer for folded
- * Renders parsed markdown with syntax highlighting
+ * Renders parsed markdown with syntax highlighting and fold support
  */
 
 import parser from './parser.js';
 import editor from './editor.js';
+import foldManager from './folding.js';
 
 class Renderer {
     constructor() {
@@ -33,6 +34,14 @@ class Renderer {
         this.editor.onChange(() => {
             this.scheduleRender();
         });
+
+        // Set up render on fold changes
+        foldManager.onChange(() => {
+            this.scheduleRender();
+        });
+
+        // Set up click handlers for fold indicators
+        this.setupFoldClickHandlers();
 
         console.log('Renderer initialized');
         return true;
@@ -76,7 +85,29 @@ class Renderer {
      * @returns {string} HTML string
      */
     renderLines(parsedLines) {
-        return parsedLines.map(line => this.renderLine(line)).join('\n');
+        const lines = [];
+
+        for (let i = 0; i < parsedLines.length; i++) {
+            const line = parsedLines[i];
+
+            // Check if this line is hidden by a fold
+            if (!foldManager.isLineVisible(i)) {
+                continue; // Skip hidden lines
+            }
+
+            // Check if this line starts a fold
+            const fold = this.getFoldStartingAtLine(i);
+            if (fold) {
+                // Render fold indicator
+                const indicator = this.renderFoldIndicator(fold);
+                lines.push(indicator);
+            } else {
+                // Render normal line
+                lines.push(this.renderLine(line));
+            }
+        }
+
+        return lines.join('\n');
     }
 
     /**
@@ -206,6 +237,48 @@ class Renderer {
         if (this.overlay) {
             this.overlay.innerHTML = '';
         }
+    }
+
+    /**
+     * Get fold that starts at a specific line
+     * @param {number} lineNumber - Line number
+     * @returns {object|null} Fold object or null
+     */
+    getFoldStartingAtLine(lineNumber) {
+        const allFolds = foldManager.getAllFolds();
+        return allFolds.find(fold => fold.startLine === lineNumber) || null;
+    }
+
+    /**
+     * Render a fold indicator
+     * @param {object} fold - Fold object
+     * @returns {string} HTML string for fold indicator
+     */
+    renderFoldIndicator(fold) {
+        const icon = fold.collapsed ? '▶' : '▼';
+        const lineInfo = fold.collapsed ? ` [${fold.endLine - fold.startLine} lines]` : '';
+        const label = fold.label || 'Folded region';
+
+        return `<span class="fold-indicator" data-fold-id="${fold.id}">` +
+               `${icon} ${this.escapeHtml(label)}${lineInfo}` +
+               `</span>`;
+    }
+
+    /**
+     * Set up click handlers for fold indicators
+     */
+    setupFoldClickHandlers() {
+        // Use event delegation on the overlay
+        this.overlay.addEventListener('click', (e) => {
+            const target = e.target;
+            if (target.classList.contains('fold-indicator')) {
+                const foldId = target.dataset.foldId;
+                if (foldId) {
+                    foldManager.toggleFold(foldId);
+                    // Render will be triggered automatically via onChange
+                }
+            }
+        });
     }
 }
 

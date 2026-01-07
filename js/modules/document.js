@@ -5,6 +5,7 @@
 
 import storage from './storage.js';
 import editor from './editor.js';
+import foldManager from './folding.js';
 
 class Document {
     constructor() {
@@ -45,7 +46,8 @@ class Document {
         const doc = await storage.saveDocument(id, content, {
             name,
             created: Date.now(),
-            modified: Date.now()
+            modified: Date.now(),
+            folds: [] // No folds in new document
         });
 
         this.currentId = id;
@@ -53,6 +55,8 @@ class Document {
         this.dirty = false;
 
         editor.setContent(content);
+        foldManager.clear(); // Clear folds for new document
+
         this.updateUI();
 
         console.log('Created new document:', id);
@@ -77,6 +81,14 @@ class Document {
         this.dirty = false;
 
         editor.setContent(doc.content || '');
+
+        // Restore fold state
+        if (doc.folds) {
+            foldManager.setState(doc.folds);
+        } else {
+            foldManager.clear();
+        }
+
         this.updateUI();
 
         console.log('Loaded document:', id);
@@ -96,12 +108,14 @@ class Document {
         this.updateSaveIndicator('saving');
 
         const content = editor.getContent();
+        const folds = foldManager.getState();
 
         try {
             const doc = await storage.saveDocument(this.currentId, content, {
                 name: this.currentDoc?.name || 'Untitled',
                 created: this.currentDoc?.created || Date.now(),
-                modified: Date.now()
+                modified: Date.now(),
+                folds: folds // Save fold state
             });
 
             this.currentDoc = doc;

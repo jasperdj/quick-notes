@@ -4,6 +4,7 @@ A powerful, minimalist markdown editor with advanced folding capabilities that r
 
 ## ✨ Features
 
+- **Advanced folding** - Fold any content: headers, code blocks, lists, or custom selections
 - **Real-time syntax highlighting** - Clean, distraction-free markdown editing
 - **Auto-save** - Your work is automatically saved to IndexedDB
 - **Fast & responsive** - Smooth typing with no lag, even on mobile
@@ -28,8 +29,15 @@ Try it now: [https://jasperdj.github.io/quick-notes/](https://jasperdj.github.io
 
 ## ⌨️ Keyboard Shortcuts
 
+**Document:**
 - `Cmd/Ctrl + S` - Save immediately
 - `Cmd/Ctrl + N` - New document
+
+**Folding:**
+- `Cmd/Ctrl + .` - Smart fold at cursor (folds headers, code blocks, lists, etc.)
+- `Cmd/Ctrl + Shift + .` - Unfold all
+- `Cmd/Ctrl + Alt + .` - Fold all
+- Click fold indicators to toggle individual folds
 
 ## 🛠️ Technical Details
 
