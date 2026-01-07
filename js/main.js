@@ -129,12 +129,37 @@ class FoldedApp {
             if (cursorElement) {
                 cursorElement.textContent = `Ln ${pos.line + 1}, Col ${pos.col + 1}`;
             }
+
+            // Auto-expand fold markers when cursor lands on them
+            // This prevents accidental editing of fold markers
+            this.autoExpandFoldAtCursor(pos.line);
         };
 
         editor.onSelectionChange(updateCursorPos);
 
         // Initial update
         updateCursorPos();
+    }
+
+    /**
+     * Auto-expand a fold if cursor is on a fold marker line
+     * Prevents accidental editing of fold markers
+     * @param {number} lineNumber - Current cursor line
+     */
+    autoExpandFoldAtCursor(lineNumber) {
+        const parsed = parser.getParsedLines();
+        if (!parsed || lineNumber >= parsed.length) return;
+
+        const currentLine = parsed[lineNumber];
+        if (currentLine && currentLine.type === 'fold-marker') {
+            // Small delay to allow the cursor movement to complete
+            setTimeout(() => {
+                const expanded = foldManager.expandFold(currentLine.foldId);
+                if (expanded) {
+                    console.log(`Auto-expanded fold: ${currentLine.foldId}`);
+                }
+            }, 0);
+        }
     }
 
     /**
@@ -176,15 +201,16 @@ class FoldedApp {
     }
 
     /**
-     * Smart fold at cursor position
+     * Smart fold at cursor position (toggle behavior)
      * - If on a fold marker, expand it
-     * - Otherwise, detect and create a fold
+     * - Otherwise, find containing header and fold it
+     * - Works from anywhere within a header section
      */
     foldAtCursor() {
         const cursor = editor.getCursor();
         const parsed = parser.getParsedLines();
 
-        // Check if cursor is on a fold marker - if so, expand it
+        // Check if cursor is on a fold marker - if so, expand it (toggle: unfold)
         const currentLine = parsed[cursor.line];
         if (currentLine && currentLine.type === 'fold-marker') {
             const expanded = foldManager.expandFold(currentLine.foldId);
@@ -195,7 +221,8 @@ class FoldedApp {
         }
 
         // Try to create a fold at cursor position
-        const region = foldManager.detectFoldableRegion(cursor.line, parsed);
+        // Pass findContaining=true to allow folding from anywhere within a header section
+        const region = foldManager.detectFoldableRegion(cursor.line, parsed, true);
         if (region) {
             const foldId = foldManager.createFold(region.startLine, region.endLine, region.label);
             if (foldId) {

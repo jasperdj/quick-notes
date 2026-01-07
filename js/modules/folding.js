@@ -224,12 +224,45 @@ class FoldManager {
     }
 
     /**
-     * Detect foldable region at cursor position
+     * Find the containing header for any line position
+     * Scans backward to find which header "owns" this line
      * @param {number} lineNumber - Current line number
      * @param {array} parsedLines - Array of parsed lines from parser
+     * @returns {object|null} { headerLine, level, label } or null
+     */
+    findContainingHeader(lineNumber, parsedLines) {
+        if (!parsedLines || lineNumber >= parsedLines.length) {
+            return null;
+        }
+
+        // Scan backward to find the nearest header
+        for (let i = lineNumber; i >= 0; i--) {
+            const line = parsedLines[i];
+            if (line.type === 'header') {
+                return {
+                    headerLine: i,
+                    level: line.level,
+                    label: line.text || line.raw.replace(/^#+\s*/, '')
+                };
+            }
+            // Stop at fold markers - don't cross fold boundaries
+            if (line.type === 'fold-marker') {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Detect foldable region at cursor position
+     * Now supports finding containing header when cursor is anywhere in section
+     * @param {number} lineNumber - Current line number
+     * @param {array} parsedLines - Array of parsed lines from parser
+     * @param {boolean} findContaining - If true, find containing header even if not on header line
      * @returns {object|null} { startLine, endLine, type, label } or null
      */
-    detectFoldableRegion(lineNumber, parsedLines) {
+    detectFoldableRegion(lineNumber, parsedLines, findContaining = false) {
         if (!parsedLines || lineNumber >= parsedLines.length) {
             return null;
         }
@@ -241,7 +274,7 @@ class FoldManager {
             return null;
         }
 
-        // Header folding
+        // Header folding - if on a header line directly
         if (currentLine.type === 'header') {
             const endLine = this.findHeaderEnd(lineNumber, currentLine.level, parsedLines);
             if (endLine > lineNumber) {
@@ -251,6 +284,22 @@ class FoldManager {
                     type: 'header',
                     label: currentLine.text || currentLine.raw.replace(/^#+\s*/, '')
                 };
+            }
+        }
+
+        // If not on a header but findContaining is true, look for containing header
+        if (findContaining && currentLine.type !== 'header') {
+            const containing = this.findContainingHeader(lineNumber, parsedLines);
+            if (containing) {
+                const endLine = this.findHeaderEnd(containing.headerLine, containing.level, parsedLines);
+                if (endLine > containing.headerLine) {
+                    return {
+                        startLine: containing.headerLine,
+                        endLine,
+                        type: 'header',
+                        label: containing.label
+                    };
+                }
             }
         }
 
