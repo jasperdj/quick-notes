@@ -152,6 +152,11 @@ body {
 .syntax-header {
     color: #569cd6;
     font-weight: 600;
+    transition: opacity 0.2s ease;
+}
+
+.syntax-header.folded {
+    opacity: 0.5;
 }
 
 .syntax-bold {
@@ -192,6 +197,11 @@ body {
 .syntax-code-block {
     background: var(--bg-tertiary);
     color: #ce9178;
+    transition: opacity 0.2s ease;
+}
+
+.syntax-code-block.folded {
+    opacity: 0.5;
 }
 
 /* Scrollbar */
@@ -220,7 +230,7 @@ body {
 
 /* Fold button - clickable triangle to fold content */
 .fold-button {
-    display: inline;
+    display: inline-block;
     color: var(--text-secondary);
     cursor: pointer;
     pointer-events: auto;
@@ -228,6 +238,13 @@ body {
     opacity: 0.5;
     margin-right: 2px;
     font-size: 0.8em;
+    transition: transform 0.2s ease, opacity 0.2s ease, color 0.2s ease;
+    transform: rotate(0deg);
+    transform-origin: center center;
+}
+
+.fold-button.folded {
+    transform: rotate(-90deg);
 }
 
 .fold-button:hover {

@@ -85,7 +85,7 @@ class Renderer {
 
     /**
      * Render parsed lines to HTML
-     * Simple now - just render each line, including fold markers
+     * Detects folded headers by checking if next line is a fold marker
      * @param {array} parsedLines - Array of parsed line objects
      * @returns {string} HTML string
      */
@@ -94,7 +94,12 @@ class Renderer {
 
         for (let i = 0; i < parsedLines.length; i++) {
             const line = parsedLines[i];
-            lines.push(`<div class="overlay-line">${this.renderLine(line)}</div>`);
+            const nextLine = parsedLines[i + 1];
+
+            // Check if this header/code-fence is followed by a fold marker
+            const isFolded = nextLine && nextLine.type === 'fold-marker';
+
+            lines.push(`<div class="overlay-line">${this.renderLine(line, isFolded, nextLine)}</div>`);
         }
 
         return lines.join('');
@@ -103,20 +108,35 @@ class Renderer {
     /**
      * Render a single parsed line
      * @param {object} line - Parsed line object
+     * @param {boolean} isFolded - Whether this line's content is folded
+     * @param {object} nextLine - Next line (fold marker if folded)
      * @returns {string} HTML string for the line
      */
-    renderLine(line) {
+    renderLine(line, isFolded = false, nextLine = null) {
         switch (line.type) {
             case 'fold-marker':
-                return this.renderFoldMarker(line);
+                // Fold markers are invisible - the header above shows the fold state
+                return '';
 
             case 'header':
-                return `<span class="fold-button" data-line="${line.lineNumber}">▼</span>` +
-                       `<span class="syntax-header">${this.escapeHtml(line.raw)}</span>`;
+                const headerFoldId = isFolded && nextLine ? nextLine.foldId : null;
+                const headerClass = isFolded ? 'syntax-header folded' : 'syntax-header';
+                const headerTriangle = isFolded ? '▶' : '▼';
+                const dataAttr = isFolded
+                    ? `data-fold-id="${headerFoldId}"`
+                    : `data-line="${line.lineNumber}"`;
+                return `<span class="fold-button ${isFolded ? 'folded' : ''}" ${dataAttr}>${headerTriangle}</span>` +
+                       `<span class="${headerClass}">${this.escapeHtml(line.raw)}</span>`;
 
             case 'code-fence':
-                return `<span class="fold-button" data-line="${line.lineNumber}">▼</span>` +
-                       `<span class="syntax-code-block">${this.escapeHtml(line.raw)}</span>`;
+                const codeFoldId = isFolded && nextLine ? nextLine.foldId : null;
+                const codeClass = isFolded ? 'syntax-code-block folded' : 'syntax-code-block';
+                const codeTriangle = isFolded ? '▶' : '▼';
+                const codeDataAttr = isFolded
+                    ? `data-fold-id="${codeFoldId}"`
+                    : `data-line="${line.lineNumber}"`;
+                return `<span class="fold-button ${isFolded ? 'folded' : ''}" ${codeDataAttr}>${codeTriangle}</span>` +
+                       `<span class="${codeClass}">${this.escapeHtml(line.raw)}</span>`;
 
             case 'code-block-line':
                 return `<span class="syntax-code-block">${this.escapeHtml(line.raw)}</span>`;
@@ -189,28 +209,23 @@ class Renderer {
     }
 
     /**
-     * Attach click handlers to fold indicators and fold buttons
+     * Attach click handlers to fold buttons (handles both fold and expand)
      */
     attachFoldClickHandlers() {
-        // Fold indicators (expand when clicked)
-        const foldIndicators = this.overlay.querySelectorAll('.fold-indicator');
-        foldIndicators.forEach(indicator => {
-            indicator.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const foldId = parseInt(indicator.dataset.foldId, 10);
-                if (!isNaN(foldId)) {
-                    foldManager.expandFold(foldId);
-                }
-            });
-        });
-
-        // Fold buttons (fold when clicked)
         const foldButtons = this.overlay.querySelectorAll('.fold-button');
         foldButtons.forEach(button => {
             button.addEventListener('click', (e) => {
                 e.stopPropagation();
+
+                // Check if this is a folded button (has fold-id) or expanded button (has line)
+                const foldId = parseInt(button.dataset.foldId, 10);
                 const lineNumber = parseInt(button.dataset.line, 10);
-                if (!isNaN(lineNumber)) {
+
+                if (!isNaN(foldId)) {
+                    // Expand the fold
+                    foldManager.expandFold(foldId);
+                } else if (!isNaN(lineNumber)) {
+                    // Create a fold
                     const parsed = this.parser.getParsedLines();
                     const region = foldManager.detectFoldableRegion(lineNumber, parsed, false);
                     if (region) {
