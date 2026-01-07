@@ -142,7 +142,7 @@ class FoldManager {
 
     /**
      * Expand a fold - RESTORES THE ORIGINAL CONTENT
-     * @param {string} foldId - Fold ID to expand
+     * @param {number} foldId - Fold ID to expand
      * @returns {boolean} Success
      */
     expandFold(foldId) {
@@ -155,24 +155,26 @@ class FoldManager {
             return false;
         }
 
-        // Find the marker in the document
+        // Find ALL markers with this foldId in the document
         const lines = editorRef.getLines();
-        let markerIndex = -1;
+        const markerIndices = [];
 
         for (let i = 0; i < lines.length; i++) {
             const parsed = this.parseMarker(lines[i]);
             if (parsed && parsed.foldId === foldId) {
-                markerIndex = i;
-                break;
+                markerIndices.push(i);
             }
         }
 
-        if (markerIndex === -1) {
+        if (markerIndices.length === 0) {
             console.error('Fold marker not found in document:', foldId);
             // Clean up orphaned content
             this.foldedContent.delete(foldId);
             return false;
         }
+
+        // Expand only the FIRST marker found
+        const markerIndex = markerIndices[0];
 
         // Replace marker with stored lines
         const newLines = [
@@ -183,8 +185,11 @@ class FoldManager {
 
         editorRef.setLines(newLines);
 
-        // Remove from storage
-        this.foldedContent.delete(foldId);
+        // Only delete stored content if this was the LAST marker with this ID
+        // (accounting for the one we just removed)
+        if (markerIndices.length <= 1) {
+            this.foldedContent.delete(foldId);
+        }
 
         this.notifyChange();
         console.log(`Expanded fold ${foldId}: restored ${stored.lineCount} lines`);
@@ -293,6 +298,20 @@ class FoldManager {
             }
         }
 
+        // If inside a code block, fold the whole code block
+        if (currentLine.type === 'code-block-line' ||
+            (findContaining && this.isInsideCodeBlock(lineNumber, parsedLines))) {
+            const codeBlock = this.findContainingCodeBlock(lineNumber, parsedLines);
+            if (codeBlock) {
+                return {
+                    startLine: codeBlock.startLine,
+                    endLine: codeBlock.endLine,
+                    type: 'code-block',
+                    label: `Code (${codeBlock.lang || 'plain'})`
+                };
+            }
+        }
+
         // If not on a header but findContaining is true, look for containing header
         if (findContaining && currentLine.type !== 'header') {
             const containing = this.findContainingHeader(lineNumber, parsedLines);
@@ -309,7 +328,7 @@ class FoldManager {
             }
         }
 
-        // Code block folding
+        // Code block folding (when on the opening fence)
         if (currentLine.type === 'code-fence') {
             const endLine = this.findCodeBlockEnd(lineNumber, parsedLines);
             if (endLine > lineNumber) {
@@ -381,6 +400,43 @@ class FoldManager {
             }
         }
         return parsedLines.length - 1;
+    }
+
+    /**
+     * Check if a line is inside a code block
+     */
+    isInsideCodeBlock(lineNumber, parsedLines) {
+        let inCodeBlock = false;
+        for (let i = 0; i <= lineNumber && i < parsedLines.length; i++) {
+            if (parsedLines[i].type === 'code-fence') {
+                inCodeBlock = !inCodeBlock;
+            }
+        }
+        return inCodeBlock;
+    }
+
+    /**
+     * Find the containing code block for a line
+     * @returns {object|null} { startLine, endLine, lang } or null
+     */
+    findContainingCodeBlock(lineNumber, parsedLines) {
+        // Scan backward to find the opening fence
+        let startLine = -1;
+        let lang = '';
+        for (let i = lineNumber; i >= 0; i--) {
+            if (parsedLines[i].type === 'code-fence') {
+                startLine = i;
+                lang = parsedLines[i].lang || '';
+                break;
+            }
+        }
+
+        if (startLine === -1) return null;
+
+        // Find the closing fence
+        const endLine = this.findCodeBlockEnd(startLine, parsedLines);
+
+        return { startLine, endLine, lang };
     }
 
     /**

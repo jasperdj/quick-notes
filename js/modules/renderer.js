@@ -111,10 +111,12 @@ class Renderer {
                 return this.renderFoldMarker(line);
 
             case 'header':
-                return `<span class="syntax-header">${this.escapeHtml(line.raw)}</span>`;
+                return `<span class="fold-button" data-line="${line.lineNumber}">▼</span>` +
+                       `<span class="syntax-header">${this.escapeHtml(line.raw)}</span>`;
 
             case 'code-fence':
-                return `<span class="syntax-code-block">${this.escapeHtml(line.raw)}</span>`;
+                return `<span class="fold-button" data-line="${line.lineNumber}">▼</span>` +
+                       `<span class="syntax-code-block">${this.escapeHtml(line.raw)}</span>`;
 
             case 'code-block-line':
                 return `<span class="syntax-code-block">${this.escapeHtml(line.raw)}</span>`;
@@ -187,9 +189,10 @@ class Renderer {
     }
 
     /**
-     * Attach click handlers to fold indicators
+     * Attach click handlers to fold indicators and fold buttons
      */
     attachFoldClickHandlers() {
+        // Fold indicators (expand when clicked)
         const foldIndicators = this.overlay.querySelectorAll('.fold-indicator');
         foldIndicators.forEach(indicator => {
             indicator.addEventListener('click', (e) => {
@@ -197,6 +200,22 @@ class Renderer {
                 const foldId = parseInt(indicator.dataset.foldId, 10);
                 if (!isNaN(foldId)) {
                     foldManager.expandFold(foldId);
+                }
+            });
+        });
+
+        // Fold buttons (fold when clicked)
+        const foldButtons = this.overlay.querySelectorAll('.fold-button');
+        foldButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const lineNumber = parseInt(button.dataset.line, 10);
+                if (!isNaN(lineNumber)) {
+                    const parsed = this.parser.getParsedLines();
+                    const region = foldManager.detectFoldableRegion(lineNumber, parsed, false);
+                    if (region) {
+                        foldManager.createFold(region.startLine, region.endLine, region.label);
+                    }
                 }
             });
         });

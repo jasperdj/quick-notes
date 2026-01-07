@@ -218,6 +218,23 @@ body {
 
 /* Folding */
 
+/* Fold button - clickable triangle to fold content */
+.fold-button {
+    display: inline;
+    color: var(--text-secondary);
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+    opacity: 0.5;
+    margin-right: 2px;
+    font-size: 0.8em;
+}
+
+.fold-button:hover {
+    color: var(--accent);
+    opacity: 1;
+}
+
 /* Fold indicator - clickable element showing folded content */
 /* Must stay within single line height to avoid cursor misalignment */
 .fold-indicator {
