@@ -117,19 +117,22 @@ class Renderer {
         const icons = [];
 
         for (let i = 0; i < parsedLines.length; i++) {
-            // Check if this line starts a collapsed fold
+            // Check if this line starts a fold (collapsed OR expanded)
             const fold = this.getFoldStartingAtLine(i);
 
             if (fold && fold.collapsed) {
-                // Show collapsed fold icon
+                // Show collapsed fold icon with fold-id for toggling
                 icons.push(`<div class="fold-gutter-icon collapsed" data-fold-id="${fold.id}" data-line="${i}">▶</div>`);
                 // Add empty placeholders for hidden lines
                 for (let j = i + 1; j <= fold.endLine; j++) {
                     icons.push(`<div class="fold-gutter-icon" style="visibility:hidden;">·</div>`);
                 }
                 i = fold.endLine;
+            } else if (fold && !fold.collapsed) {
+                // Expanded fold - show ▼ with fold-id so clicking toggles it
+                icons.push(`<div class="fold-gutter-icon" data-fold-id="${fold.id}" data-line="${i}">▼</div>`);
             } else {
-                // Check if line is foldable
+                // Check if line is foldable (no existing fold)
                 const canFold = this.canFoldAtLine(i, parsedLines);
                 if (canFold) {
                     icons.push(`<div class="fold-gutter-icon" data-line="${i}">▼</div>`);
@@ -323,12 +326,12 @@ class Renderer {
      * @returns {string} HTML string for fold indicator
      */
     renderFoldIndicator(fold) {
-        const icon = fold.collapsed ? '▶' : '▼';
-        const lineInfo = fold.collapsed ? ` [${fold.endLine - fold.startLine} lines]` : '';
+        // No icon here - the gutter already shows the triangle
+        const lineCount = fold.endLine - fold.startLine;
         const label = fold.label || 'Folded region';
 
         return `<span class="fold-indicator" data-fold-id="${fold.id}">` +
-               `${icon} ${this.escapeHtml(label)}${lineInfo}` +
+               `${this.escapeHtml(label)} [${lineCount} lines]` +
                `</span>`;
     }
 

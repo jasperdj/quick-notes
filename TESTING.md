@@ -4,6 +4,12 @@
 
 The advanced folding system allows you to collapse and expand sections of your markdown document. This is the core feature that gives "folded" its name!
 
+### Key Components
+- **Fold Gutter**: A separate clickable layer on the left side showing fold icons (▼/▶)
+- **Fold Icons**: ▼ indicates foldable content, ▶ indicates collapsed fold
+- **Overlay**: Syntax highlighting layer (non-interactive)
+- **Textarea**: Where you actually type (transparent text)
+
 ## How to Test
 
 ### 1. Initial Setup
@@ -106,20 +112,30 @@ All part of the same paragraph.
    - All consecutive text lines collapse
    - Shows `▶ Paragraph [4 lines]`
 
-### 3. Test Toggle Fold by Clicking
+### 3. Test Fold Gutter Clicking
 
-1. **Action**: Click on any fold indicator (e.g., `▶ Main Header [X lines]`)
+**Test: Create fold by clicking gutter icon**
+
+1. **Action**: Look at the left margin - you'll see ▼ icons next to foldable lines
+2. **Action**: Click the ▼ icon next to a header (e.g., `# Main Header`)
+3. **Expected**:
+   - Section collapses immediately
+   - Gutter icon changes from ▼ to ▶
+   - Shows fold indicator: `▶ Header [X lines]`
+
+**Test: Expand fold by clicking gutter icon**
+
+1. **Action**: Click the ▶ icon in the gutter (on a collapsed fold)
 2. **Expected**:
    - Fold expands
-   - Icon changes from ▶ to ▼
+   - Icon changes back to ▼
    - All hidden content becomes visible
-   - Label changes from "▶ Section [X lines]" to "▼ Section"
 
-3. **Action**: Click the same indicator again
-4. **Expected**:
-   - Fold collapses again
-   - Icon changes from ▼ to ▶
-   - Content hides again
+**Test: Click fold indicator text**
+
+1. **Action**: Click directly on the fold indicator text (e.g., `▶ Main Header [X lines]`)
+2. **Expected**:
+   - Fold toggles (expand if collapsed, collapse if expanded)
 
 ### 4. Test Fold All
 
