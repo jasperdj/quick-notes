@@ -135,8 +135,8 @@ class Parser {
             };
         }
 
-        // Headers (# through ######)
-        const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
+        // Headers (# through ######) - regular, not folded
+        // Note: headerMatch already declared above for fold detection
         if (headerMatch) {
             return {
                 type: 'header',
