@@ -257,18 +257,8 @@ class FoldManager {
             }
         }
 
-        // Paragraph folding (group of consecutive text lines)
-        if (currentLine.type === 'text' && currentLine.raw.trim() !== '') {
-            const endLine = this.findParagraphEnd(lineNumber, parsedLines);
-            if (endLine > lineNumber) {
-                return {
-                    startLine: lineNumber,
-                    endLine,
-                    type: 'paragraph',
-                    label: 'Paragraph'
-                };
-            }
-        }
+        // Note: Paragraph folding removed - regular text lines should not be foldable
+        // Users can still fold text by selecting it (future feature)
 
         return null;
     }

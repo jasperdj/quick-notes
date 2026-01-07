@@ -135,6 +135,9 @@ body {
     word-wrap: break-word;
     color: var(--text-primary);
     background: var(--bg-primary);
+    /* Use flexbox for proper line collapsing */
+    display: flex;
+    flex-direction: column;
 }
 
 /* Fold gutter - separate clickable layer for fold controls */
@@ -316,4 +319,23 @@ body {
 .fold-indicator:active {
     background: var(--accent);
     color: var(--bg-primary);
+}
+
+/* Each line in overlay is a block element */
+.overlay-line {
+    display: block;
+    min-height: calc(var(--font-size) * var(--line-height));
+    line-height: var(--line-height);
+}
+
+/* Hidden lines in folded regions - collapse to zero height */
+.fold-hidden-line {
+    display: block;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden;
+    line-height: 0 !important;
+    font-size: 0;
+    padding: 0;
+    margin: 0;
 }

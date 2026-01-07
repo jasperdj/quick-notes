@@ -123,9 +123,9 @@ class Renderer {
             if (fold && fold.collapsed) {
                 // Show collapsed fold icon with fold-id for toggling
                 icons.push(`<div class="fold-gutter-icon collapsed" data-fold-id="${fold.id}" data-line="${i}">▶</div>`);
-                // Add empty placeholders for hidden lines
+                // Add zero-height placeholders for hidden lines to maintain alignment
                 for (let j = i + 1; j <= fold.endLine; j++) {
-                    icons.push(`<div class="fold-gutter-icon" style="visibility:hidden;">·</div>`);
+                    icons.push(`<div class="fold-gutter-icon fold-hidden-line"></div>`);
                 }
                 i = fold.endLine;
             } else if (fold && !fold.collapsed) {
@@ -163,22 +163,23 @@ class Renderer {
             if (fold && fold.collapsed) {
                 // Render fold indicator for collapsed fold (replaces the line)
                 const indicator = this.renderFoldIndicator(fold);
-                lines.push(indicator);
+                lines.push(`<div class="overlay-line">${indicator}</div>`);
 
-                // Add empty lines for hidden content to maintain line alignment
+                // Hidden lines - render as zero-height divs (no newlines needed)
                 for (let j = i + 1; j <= fold.endLine; j++) {
-                    lines.push(''); // Empty line to keep textarea and overlay in sync
+                    lines.push('<div class="overlay-line fold-hidden-line"></div>');
                 }
 
                 // Skip to the line after the fold
                 i = fold.endLine;
             } else {
-                // Render normal line (fold icons are in gutter now)
-                lines.push(this.renderLine(line));
+                // Render normal line wrapped in div
+                lines.push(`<div class="overlay-line">${this.renderLine(line)}</div>`);
             }
         }
 
-        return lines.join('\n');
+        // Join without newlines - divs handle line breaks
+        return lines.join('');
     }
 
     /**
