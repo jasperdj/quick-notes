@@ -13,7 +13,7 @@ A powerful, minimalist markdown editor with advanced folding capabilities that r
 
 ## 🚀 Live Demo
 
-Try it now: [https://jasperdj.github.io/quick-notes/](https://jasperdj.github.io/folded/)
+Try it now: [https://jasperdj.github.io/folded/](https://jasperdj.github.io/folded/)
 
 ## 📋 Supported Markdown
 
