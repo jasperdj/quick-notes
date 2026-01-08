@@ -10,7 +10,13 @@
       "Bash(git checkout:*)",
       "Bash(git reset:*)",
       "Bash(git stash:*)",
-      "Bash(git revert:*)"
+      "Bash(git revert:*)",
+      "Bash(powershell.exe -Command \"[console]::beep\\(1000,500\\)\")",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(cat:*)",
+      "Bash(wc:*)"
     ]
   }
 }

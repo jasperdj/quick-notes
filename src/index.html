@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>folded - Advanced Markdown Editor</title>
-    <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
     <div id="app">
@@ -21,10 +20,7 @@
         </header>
 
         <main class="editor-container">
-            <div class="editor-wrapper">
-                <textarea id="editor" class="editor" spellcheck="false" autocomplete="off"></textarea>
-                <div id="overlay" class="overlay"></div>
-            </div>
+            <!-- CodeMirror 6 will mount here -->
         </main>
 
         <footer class="footer">
@@ -40,15 +36,6 @@
         </footer>
     </div>
 
-    <!-- Core modules -->
-    <script type="module" src="js/modules/storage.js"></script>
-    <script type="module" src="js/modules/editor.js"></script>
-    <script type="module" src="js/modules/document.js"></script>
-    <script type="module" src="js/modules/parser.js"></script>
-    <script type="module" src="js/modules/renderer.js"></script>
-    <script type="module" src="js/modules/folding.js"></script>
-
-    <!-- Main application -->
-    <script type="module" src="js/main.js"></script>
+    <script type="module" src="/main.ts"></script>
 </body>
 </html>
