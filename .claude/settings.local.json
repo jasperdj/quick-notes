@@ -20,7 +20,8 @@
       "Bash(gh pr create:*)",
       "Bash(winget install:*)",
       "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
-      "Bash(gh:*)"
+      "Bash(gh:*)",
+      "WebFetch(domain:jasperdj.github.io)"
     ]
   }
 }
