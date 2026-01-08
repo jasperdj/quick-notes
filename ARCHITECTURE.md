@@ -2,502 +2,438 @@
 
 ## Overview
 
-folded is a client-side markdown editor with advanced folding capabilities. It's built entirely with vanilla JavaScript (ES6 modules) and requires no framework dependencies. All data is stored locally in IndexedDB.
+folded is a client-side markdown editor with advanced folding capabilities. Built with TypeScript, CodeMirror 6, and Vite. All data is stored locally in IndexedDB.
 
 ## Core Principles
 
 - **Serverless**: Everything runs in the browser
 - **Privacy-first**: No data leaves the client
-- **Performance**: 60fps rendering with requestAnimationFrame
-- **Simplicity**: No build tools or frameworks required
+- **Performance**: CM6's efficient virtual DOM and incremental parsing
+- **Modern Stack**: TypeScript, ES modules, Vite build
 - **Modularity**: Clean separation of concerns
+
+## Technology Stack
+
+- **Editor**: CodeMirror 6
+- **Language**: TypeScript
+- **Build**: Vite
+- **Storage**: IndexedDB
+- **Deployment**: GitHub Pages via GitHub Actions
 
 ## Module Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                      main.js                            │
+│                      main.ts                            │
 │              (Application Coordinator)                  │
 └─────────────────────────────────────────────────────────┘
                            │
          ┌─────────────────┼─────────────────┐
          │                 │                 │
          ▼                 ▼                 ▼
-┌─────────────────┐ ┌─────────────┐ ┌──────────────┐
-│   document.js   │ │  editor.js  │ │ renderer.js  │
-│  (Coordinator)  │ │  (UI Core)  │ │  (Display)   │
-└─────────────────┘ └─────────────┘ └──────────────┘
+┌─────────────────┐ ┌─────────────┐ ┌──────────────────┐
+│   document.ts   │ │  editor.ts  │ │   folding.ts     │
+│  (Coordinator)  │ │ (CM6 Wrap)  │ │  (Fold State)    │
+└─────────────────┘ └─────────────┘ └──────────────────┘
          │                 │                 │
-         │                 └─────────────────┤
-         ▼                                   │
-┌─────────────────┐                         │
-│   storage.js    │                         │
-│  (IndexedDB)    │                         │
-└─────────────────┘                         │
-                                            │
-         ┌──────────────────────────────────┤
-         │                                  │
-         ▼                                  ▼
-┌─────────────────┐              ┌──────────────────┐
-│   parser.js     │              │   folding.js     │
-│  (Markdown)     │              │  (Fold State)    │
-└─────────────────┘              └──────────────────┘
+         ▼                 │                 │
+┌─────────────────┐        │                 │
+│   storage.ts    │        │                 │
+│  (IndexedDB)    │        │                 │
+└─────────────────┘        │                 │
+                           ▼                 │
+              ┌────────────────────────┐     │
+              │     CodeMirror 6       │     │
+              │  ┌──────────────────┐  │     │
+              │  │   extensions.ts  │  │◄────┘
+              │  │  (CM6 Config)    │  │
+              │  └──────────────────┘  │
+              │  ┌──────────────────┐  │
+              │  │invisible-chars.ts│  │
+              │  │ (Fold Widgets)   │  │
+              │  └──────────────────┘  │
+              │  ┌──────────────────┐  │
+              │  │  clipboard.ts    │  │
+              │  │ (Copy/Paste)     │  │
+              │  └──────────────────┘  │
+              └────────────────────────┘
+```
+
+## Directory Structure
+
+```
+src/
+├── main.ts                 # Application entry point
+├── index.html              # HTML shell
+├── css/
+│   └── main.css            # Styles
+├── modules/
+│   ├── editor.ts           # CM6 wrapper with line-based API
+│   ├── storage.ts          # IndexedDB operations
+│   ├── document.ts         # Document lifecycle management
+│   └── folding.ts          # Fold state & invisible char encoding
+└── cm6/
+    ├── extensions.ts       # CM6 plugins & configuration
+    ├── invisible-chars.ts  # ViewPlugin for fold indicators
+    └── clipboard.ts        # Copy/paste handling for folds
 ```
 
 ## Module Responsibilities
 
-### main.js - Application Entry Point
+### main.ts - Application Entry Point
+
 **Role**: Orchestrates all modules and handles application lifecycle
 
 **Responsibilities**:
 - Initialize all modules in correct order
 - Set up global keyboard shortcuts
-- Coordinate between modules
+- Connect fold manager to CM6 plugins
 - Handle errors and user feedback
-- Manage application state
 
 **Key Functions**:
-- `init()` - Initialize the application
-- `setupUIHandlers()` - Set up keyboard shortcuts
+- `initializeApp()` - Bootstrap the application
+- `setupKeyboardShortcuts()` - Global hotkeys
 - `foldAtCursor()` - Smart folding at cursor position
-- `createNewDocument()` - Create new document
 
-### editor.js - Text Editor Core
-**Role**: Line-based text editing with cursor management
+### editor.ts - CodeMirror 6 Wrapper
+
+**Role**: Provides a stable API over CodeMirror 6
 
 **Responsibilities**:
-- Manage textarea element
-- Provide line-based API (getLine, setLine, etc.)
-- Track cursor position and selection
-- Handle input events
-- Synchronize scroll with overlay
-
-**Key Features**:
-- 0-indexed line operations
-- Debounced change callbacks
-- Selection range tracking
-- Scroll synchronization
+- Initialize CM6 with extensions
+- Expose line-based operations (compatible with old API)
+- Handle cursor and selection
+- Dispatch document changes
 
 **API**:
-```javascript
-editor.getLine(n)              // Get line content
-editor.setLine(n, content)     // Set line content
-editor.getCursor()             // Get {line, col}
-editor.getSelection()          // Get selected text
-editor.onChange(callback)      // Register change handler
+```typescript
+editor.initialize(container: HTMLElement): boolean
+editor.getLine(n: number): string | null        // 0-indexed
+editor.setLine(n: number, content: string): boolean
+editor.getLines(): string[]
+editor.setLines(lines: string[]): void
+editor.getContent(): string
+editor.setContent(content: string): void
+editor.getCursor(): { line: number; col: number }
+editor.setCursor(line: number, col: number): boolean
+editor.getSelection(): string
+editor.onChange(callback: () => void): void
+editor.focus(): void
+editor.getLineCount(): number
 ```
 
-### parser.js - Markdown Parser
-**Role**: Parse markdown into structured tokens
+### folding.ts - Fold State Manager
 
-**Responsibilities**:
-- Line-by-line parsing for performance
-- Detect markdown elements (headers, lists, code, etc.)
-- Parse inline tokens (bold, italic, code, links)
-- Build header tree structure
-- Track parsing context (code blocks, etc.)
+**Role**: Manage document folding using invisible Unicode markers
 
-**Supported Elements**:
-- Headers (# through ######)
-- Code blocks (```)
-- Lists (ordered, unordered, checkboxes)
-- Blockquotes (>)
-- Inline: bold, italic, code, links
+**Key Concept**: Folds are encoded as invisible Unicode suffixes on lines:
+- `U+200B` (ZWS) - Start marker
+- `U+200C` (ZWNJ) - Binary 0
+- `U+200D` (ZWJ) - Binary 1
+- `U+FEFF` (BOM) - End marker
 
-**API**:
-```javascript
-parser.parse(content)          // Parse entire document
-parser.parseLine(line, ctx)    // Parse single line
-parser.getParsedLines()        // Get all parsed lines
-parser.getHeaderTree()         // Get header structure
-```
-
-### renderer.js - Syntax Highlighting Renderer
-**Role**: Render parsed markdown with syntax highlighting
-
-**Responsibilities**:
-- Render parsed lines to HTML
-- Apply syntax highlighting styles
-- Integrate with fold system
-- Render fold indicators
-- Sync scroll with editor
-- Handle fold clicks
-
-**Rendering Strategy**:
-- Uses overlay div positioned over transparent textarea
-- Scheduled with requestAnimationFrame for 60fps
-- Only re-renders when content or folds change
-- Skips hidden (folded) lines
-
-**API**:
-```javascript
-renderer.render()              // Render entire document
-renderer.scheduleRender()      // Schedule next frame render
-renderer.renderFoldIndicator() // Render fold UI
-```
-
-### folding.js - Fold State Manager (NEW in Phase 2)
-**Role**: Manage document folding state
-
-**Responsibilities**:
-- Track fold regions (start/end lines)
-- Detect foldable regions (smart folding)
-- Toggle fold collapse/expand state
-- Maintain line visibility
-- Prevent overlapping folds
-- Persist fold state
-
-**Smart Fold Detection**:
-- **Headers**: Fold section until next same-level header
-- **Code blocks**: Fold from opening ``` to closing ```
-- **Lists**: Fold consecutive list items at same indent
-- **Blockquotes**: Fold consecutive blockquote lines
-- **Paragraphs**: Fold consecutive text lines
+**Why invisible characters?**
+- Folds persist in the document itself
+- Copy/paste preserves fold structure
+- No separate state to sync
+- Works with any text operation
 
 **Data Structures**:
-```javascript
-// Fold object
-{
-  id: "fold-123",
-  startLine: 10,
-  endLine: 50,
-  collapsed: true,
-  label: "Section Header"
-}
+```typescript
+// In-memory storage for folded content
+foldedContent: Map<number, {
+  lines: string[];      // The hidden lines
+  lineCount: number;    // For display
+  label: string;        // First line preview
+}>
 
-// Maps for fast lookup
-folds: Map<id, fold>           // foldId -> fold object
-lineToFolds: Map<line, Set>    // lineNumber -> Set<foldId>
+// Encoding: foldId → binary → invisible chars
+encodeFoldId(id: number): string   // "​‌‍‍..."
+decodeFoldId(suffix: string): number
 ```
 
 **API**:
-```javascript
-foldManager.createFold(start, end, label)
-foldManager.removeFold(id)
-foldManager.toggleFold(id)
-foldManager.isLineVisible(n)
-foldManager.detectFoldableRegion(line, parsed)
-foldManager.foldAll(parsedLines)
-foldManager.unfoldAll()
-foldManager.getState()         // For persistence
-foldManager.setState(state)    // Restore from storage
+```typescript
+foldManager.createFold(startLine: number, endLine: number): number
+foldManager.expandFold(foldId: number): boolean
+foldManager.foldAll(): void
+foldManager.unfoldAll(): void
+foldManager.getState(): unknown        // For persistence
+foldManager.setState(state: unknown): void
+foldManager.clear(): void
 ```
 
-### document.js - Document Manager
-**Role**: Coordinate between editor and storage
+### storage.ts - IndexedDB Wrapper
 
-**Responsibilities**:
-- Manage current document state
-- Auto-save with debouncing (2 seconds)
-- Handle document CRUD operations
-- Coordinate fold state persistence
-- Show save indicators
-- Track dirty state
-
-**Auto-save Flow**:
-1. User types → editor triggers onChange
-2. Document marked as dirty
-3. Timer scheduled (2s)
-4. Timer fires → save() called
-5. Content + folds saved to storage
-6. Save indicator updated
-
-**API**:
-```javascript
-doc.create(name)               // Create new document
-doc.load(id)                   // Load document + folds
-doc.save()                     // Save content + folds
-doc.getOrCreateDefault()       // Get last opened or create
-```
-
-### storage.js - IndexedDB Wrapper
 **Role**: Persist documents and settings
 
-**Responsibilities**:
-- Manage IndexedDB connection
-- CRUD operations for documents
-- Store document metadata (name, dates, folds)
-- Store application settings
-- Handle database versioning
-
 **Database Schema**:
-```javascript
-// Object stores
+```typescript
+// Database: 'folded-db', version 1
+// Object stores:
+
 documents: {
   keyPath: 'id',
-  data: {
+  indexes: ['modified'],
+  structure: {
     id: string,
-    content: string,
+    content: string,      // Includes invisible fold markers
     name: string,
-    created: timestamp,
-    modified: timestamp,
-    folds: array      // NEW: fold state
+    created: number,
+    modified: number,
+    foldState: unknown    // Serialized fold manager state
   }
 }
 
 settings: {
   keyPath: 'key',
-  data: { key: string, value: any }
+  structure: { key: string, value: unknown }
 }
 ```
 
 **API**:
-```javascript
-storage.initDB()
-storage.saveDocument(id, content, metadata)
-storage.loadDocument(id)
-storage.deleteDocument(id)
-storage.saveSetting(key, value)
-storage.loadSetting(key)
+```typescript
+storage.initDB(): Promise<void>
+storage.saveDocument(id, content, metadata): Promise<DocumentData>
+storage.loadDocument(id): Promise<DocumentData | null>
+storage.deleteDocument(id): Promise<boolean>
+storage.listDocuments(): Promise<DocumentData[]>
+storage.saveSetting(key, value): Promise<void>
+storage.loadSetting<T>(key, defaultValue): Promise<T>
 ```
+
+### document.ts - Document Manager
+
+**Role**: Coordinate between editor, storage, and fold manager
+
+**Responsibilities**:
+- Auto-save with 2-second debounce
+- Track dirty state
+- Manage document lifecycle (create, load, save, delete)
+- Coordinate fold state persistence
+- Update UI indicators
+
+**API**:
+```typescript
+doc.initialize(): Promise<void>
+doc.create(name?: string): Promise<DocumentData>
+doc.load(id: string): Promise<DocumentData | null>
+doc.save(): Promise<DocumentData | null>
+doc.delete(id?: string): Promise<boolean>
+doc.getOrCreateDefault(): Promise<DocumentData>
+doc.markDirty(): void
+```
+
+## CodeMirror 6 Plugins
+
+### extensions.ts - CM6 Configuration
+
+**Included Extensions**:
+- Line numbers, active line highlighting
+- History (undo/redo)
+- Markdown language support with code block highlighting
+- One Dark theme
+- Fold gutter (for native CM6 folding of headers/code blocks)
+- Bracket matching
+- Rectangular selection
+
+**Custom Extensions**:
+- `invisibleCharsExtension` - Fold indicator widgets
+- `clipboardExtension` - Smart copy/paste
+- `markdownFoldService` - Custom fold detection
+
+### invisible-chars.ts - Fold Indicator Plugin
+
+**Role**: Replace invisible fold markers with visual widgets
+
+**How it works**:
+1. `ViewPlugin` scans visible range for fold marker pattern
+2. Regex matches: `ZWS + [ZWNJ|ZWJ]+ + BOM`
+3. Creates `Decoration.replace()` with `FoldIndicatorWidget`
+4. Widget shows "▼ N lines" badge, clickable to expand
+
+**Widget**:
+```typescript
+class FoldIndicatorWidget extends WidgetType {
+  toDOM(): HTMLElement {
+    // Returns clickable badge: "▼ 5 lines"
+    // Click handler calls foldManager.expandFold(id)
+  }
+}
+```
+
+### clipboard.ts - Copy/Paste Handler
+
+**Role**: Handle copy/paste of folded content
+
+**Challenges**:
+- Browsers restrict custom clipboard MIME types
+- Need to expand folds for external paste
+- Need to preserve folds for internal paste
+
+**Solution**:
+1. On copy/cut: Store fold data in memory (`pendingPaste`)
+2. Write plain text (with folds expanded) to clipboard
+3. On paste: Check if we have pending data for this text
+4. If yes: Restore folds with new IDs
+5. If no: Paste as plain text
 
 ## Data Flow
 
-### Rendering Flow
+### Startup Flow
 ```
-User types
-    ↓
-editor.onChange() fired
-    ↓
-renderer.scheduleRender()
-    ↓
-requestAnimationFrame callback
-    ↓
-parser.parse(content)
-    ↓
-renderer.renderLines(parsed)
-    ↓
-  for each line:
-    - Check if hidden by fold → skip
-    - Check if fold starts here → render indicator
-    - Otherwise → render line with syntax
-    ↓
-overlay.innerHTML = html
+main.ts: initializeApp()
+    │
+    ├─→ storage.initDB()
+    │
+    ├─→ editor.initialize(container)
+    │       └─→ Creates CM6 EditorView with extensions
+    │
+    ├─→ Create FoldManager(editor)
+    │
+    ├─→ Connect fold manager to plugins:
+    │       setFoldManager(foldManager)      → document.ts
+    │       setFoldManagerRef(foldManager)   → invisible-chars.ts
+    │       setClipboardFoldManager(foldManager) → clipboard.ts
+    │
+    ├─→ doc.initialize()
+    │
+    └─→ doc.getOrCreateDefault()
+            └─→ Loads document + restores fold state
 ```
 
 ### Folding Flow
 ```
 User presses Cmd+.
-    ↓
-foldAtCursor() called
-    ↓
-Get cursor position from editor
-    ↓
-parser.getParsedLines()
-    ↓
-foldManager.detectFoldableRegion(cursor.line, parsed)
-    ↓
-Detect type (header/code/list/etc.)
-    ↓
-Find end line based on type
-    ↓
-foldManager.createFold(start, end, label)
-    ↓
-Index fold in maps
-    ↓
-foldManager.onChange() fired
-    ↓
-renderer.scheduleRender()
-    ↓
-Fold indicator appears, content hidden
+    │
+    ├─→ foldAtCursor()
+    │
+    ├─→ Get cursor line from editor
+    │
+    ├─→ foldManager.createFold(startLine, endLine)
+    │       │
+    │       ├─→ Extract lines to fold
+    │       ├─→ Store in foldedContent Map
+    │       ├─→ Generate fold ID
+    │       ├─→ Encode ID as invisible suffix
+    │       └─→ Replace lines with single line + suffix
+    │
+    └─→ CM6 updates → invisible-chars plugin detects marker
+            └─→ Renders fold indicator widget
+```
+
+### Expand Flow
+```
+User clicks fold indicator
+    │
+    ├─→ FoldIndicatorWidget click handler
+    │
+    ├─→ foldManager.expandFold(foldId)
+    │       │
+    │       ├─→ Get stored lines from foldedContent
+    │       ├─→ Find line with this fold's marker
+    │       ├─→ Remove invisible suffix
+    │       ├─→ Insert stored lines back
+    │       └─→ Delete from foldedContent
+    │
+    └─→ CM6 updates → widget disappears, content restored
 ```
 
 ### Save Flow
 ```
 User types
-    ↓
-document.markDirty()
-    ↓
-scheduleAutoSave() (2s debounce)
-    ↓
-Timer fires
-    ↓
-editor.getContent()
-foldManager.getState()
-    ↓
-storage.saveDocument(id, content, { folds, ... })
-    ↓
-IndexedDB transaction
-    ↓
-Save indicator: "Saved ✓"
-```
-
-### Load Flow
-```
-App starts
-    ↓
-doc.getOrCreateDefault()
-    ↓
-storage.loadSetting('lastOpenedDocument')
-    ↓
-storage.loadDocument(id)
-    ↓
-editor.setContent(doc.content)
-    ↓
-foldManager.setState(doc.folds)
-    ↓
-renderer.render()
-    ↓
-UI shows document with folds restored
-```
-
-## Performance Considerations
-
-### Rendering Performance
-- **requestAnimationFrame**: Syncs with browser paint cycle (~16ms)
-- **No debouncing**: Immediate visual feedback
-- **Incremental parsing**: Only parse changed regions (future optimization)
-- **Virtual scrolling**: Planned for very large documents
-
-### Memory Efficiency
-- **Line-based storage**: Strings in arrays, no heavy objects
-- **Map-based indexes**: O(1) fold lookups
-- **Minimal DOM**: Single overlay div, rewritten on change
-
-### Storage Efficiency
-- **IndexedDB**: Handles large documents efficiently
-- **No duplicates**: Documents stored once, loaded on demand
-- **Metadata separation**: Name, dates stored separately from content
-
-## Event System
-
-### Change Propagation
-```
-editor.onChange
-    ↓
-    ├─→ document.markDirty()
-    │       ↓
-    │   scheduleAutoSave()
     │
-    └─→ renderer.scheduleRender()
-            ↓
-        parser.parse()
-            ↓
-        renderer.renderLines()
-
-foldManager.onChange
-    ↓
-    └─→ renderer.scheduleRender()
+    ├─→ editor.onChange() fires
+    │
+    ├─→ doc.markDirty()
+    │       └─→ Schedules auto-save (2s debounce)
+    │
+    └─→ Timer fires → doc.save()
+            │
+            ├─→ editor.getContent()  // Includes invisible markers
+            ├─→ foldManager.getState()
+            │
+            └─→ storage.saveDocument(id, content, { foldState, ... })
 ```
 
 ## Keyboard Shortcuts
 
-```
-Cmd/Ctrl + S           → Save immediately
-Cmd/Ctrl + N           → New document
-Cmd/Ctrl + .           → Smart fold at cursor
-Cmd/Ctrl + Shift + .   → Unfold all
-Cmd/Ctrl + Alt + .     → Fold all
-```
+| Shortcut | Action |
+|----------|--------|
+| `Cmd/Ctrl + S` | Save immediately |
+| `Cmd/Ctrl + N` | New document |
+| `Cmd/Ctrl + .` | Smart fold at cursor |
+| `Cmd/Ctrl + ,` | Unfold at cursor |
+| `Cmd/Ctrl + Shift + .` | Fold all |
+| `Cmd/Ctrl + Shift + ,` | Unfold all |
 
-## CSS Architecture
+## Styling
 
-### Layer System (z-index)
-```
-z-index: 0  → overlay (syntax highlighting, fold indicators)
-z-index: 1  → textarea (transparent, receives input)
-```
-
-### Positioning Strategy
-- Container: `position: relative`
-- Both textarea and overlay: `position: absolute`
-- Same padding, font, line-height for alignment
-- Synchronized scrolling via JavaScript
-
-### Syntax Highlighting Classes
+### CSS Variables (Theming Ready)
 ```css
-.syntax-header       → Headers
-.syntax-code-block   → Code blocks
-.syntax-list         → Lists
-.syntax-checkbox     → Checkboxes
-.syntax-blockquote   → Blockquotes
-.syntax-bold         → Bold text
-.syntax-italic       → Italic text
-.syntax-code         → Inline code
-.syntax-link         → Links
-.fold-indicator      → Fold UI (clickable)
+--bg-color: #1e1e1e;
+--text-color: #d4d4d4;
+--border-color: #3e3e42;
+--accent-color: #007acc;
 ```
 
-## Future Enhancements (Phase 3+)
+### Fold Indicator Styling
+```css
+.cm-fold-indicator {
+  background: #3e3e42;
+  color: #858585;
+  padding: 0 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.cm-fold-indicator:hover {
+  background: #4e4e52;
+  color: #d4d4d4;
+}
+```
+
+## Deployment
+
+### GitHub Actions Workflows
+
+**deploy.yml** (Production):
+- Triggers on push to `main`
+- Builds with Vite
+- Deploys to gh-pages branch
+- Triggers GitHub Pages build via API
+
+**preview.yml** (PR Previews):
+- Triggers on PR open/sync
+- Builds with PR-specific base path
+- Deploys to `gh-pages/pr/{number}/`
+- Comments preview URL on PR
+- Cleans up on PR close
+
+### URLs
+- **Production**: https://jasperdj.github.io/folded/
+- **PR Preview**: https://jasperdj.github.io/folded/pr/{number}/
+
+## Future Enhancements (Phase 2+)
 
 ### Planned Features
-- **Search & Replace**: Regex search with scope control
-- **Rich Content**: Images, Mermaid diagrams, table rendering
+- **Search & Navigation**: Regex search, URL-based header navigation
+- **Rich Content**: Images, Mermaid diagrams, interactive checkboxes
 - **Export/Import**: Encrypted, compressed data portability
-- **Themes**: Custom theme creation and management
-- **Nested Folds**: Support folds within folds
-- **Selection-based Folds**: Fold arbitrary selected text
-- **Fold Persistence by Type**: Remember fold preferences per content type
+- **Themes**: Custom theme editor
+- **Code Previews**: Sandboxed HTML preview
 
 ### Performance Optimizations
-- Incremental parsing (only re-parse changed lines)
 - Virtual scrolling for 100K+ line documents
 - Web Workers for heavy operations
-- IndexedDB caching layer
-
-## Testing Strategy
-
-### Unit Tests
-- `storage.test.html` - IndexedDB operations (12 tests)
-- Parser tests - Markdown parsing accuracy
-- Fold manager tests - Fold logic and state
-
-### Manual Testing
-- Typing performance (should feel instant)
-- Auto-save (2s after typing stops)
-- Fold operations (create, toggle, delete)
-- State persistence (folds survive reload)
-- Large documents (1000+ lines)
+- Incremental fold state updates
 
 ## Browser Compatibility
 
 - **Chrome/Edge**: Full support
 - **Firefox**: Full support
 - **Safari**: Full support
-- **Mobile browsers**: Tested on Chrome Android
 
 **Requirements**:
-- ES6 modules support
+- ES2020+ support
 - IndexedDB support
-- requestAnimationFrame support
 - CSS variables support
-
-## Deployment
-
-- **Platform**: GitHub Pages
-- **Build**: None required (vanilla JS)
-- **Deploy**: Push to main branch
-- **URL**: https://jasperdj.github.io/quick-notes/
-
-## File Structure
-
-```
-quick-notes/
-├── index.html                 # Entry point
-├── css/
-│   └── main.css              # All styles
-├── js/
-│   ├── main.js               # App coordinator
-│   └── modules/
-│       ├── editor.js         # Text editor
-│       ├── parser.js         # Markdown parser
-│       ├── renderer.js       # Syntax renderer
-│       ├── storage.js        # IndexedDB
-│       ├── document.js       # Doc manager
-│       └── folding.js        # Fold state (NEW)
-├── tests/
-│   └── storage.test.html     # Storage tests
-├── README.md                 # User documentation
-├── ARCHITECTURE.md           # This file
-└── PLAN.md                   # Full roadmap
-```
-
-## Summary
-
-folded is a well-architected, modular markdown editor that prioritizes:
-- **Performance**: 60fps with requestAnimationFrame
-- **Simplicity**: No frameworks, minimal dependencies
-- **Privacy**: Everything client-side
-- **UX**: Auto-save, smart folding, instant feedback
-
-The addition of the folding system (Phase 2) maintains these principles while adding powerful document organization capabilities. All modules remain loosely coupled and communicate through clean interfaces.
